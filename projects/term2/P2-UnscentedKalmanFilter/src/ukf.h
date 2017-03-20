@@ -2,7 +2,6 @@
 #define UKF_H
 #include "Eigen/Dense"
 #include "measurement_package.h"
-#include "ground_truth_package.h"
 #include <vector>
 
 using Eigen::MatrixXd;
@@ -62,6 +61,9 @@ public:
   ///* Augmented state dimension
   int n_aug_;
 
+  ///* Number of sigma points
+  int n_sig_;
+
   ///* Sigma point spreading parameter
   double lambda_;
 
@@ -70,6 +72,9 @@ public:
 
   ///* the current NIS for laser
   double NIS_laser_;
+
+  ///* Stores the previous measurement, in case we need to restart the filter
+  MeasurementPackage prev_meas_package_;
 
   /**
    * Constructor
@@ -84,7 +89,6 @@ public:
   /**
    * ProcessMeasurement
    * @param meas_package The latest measurement data of either radar or laser
-   * @param gt_package The ground truth of the state x at measurement time
    */
   void ProcessMeasurement(MeasurementPackage meas_package);
 
@@ -106,6 +110,13 @@ public:
    * @param meas_package The measurement at k+1
    */
   void UpdateRadar(MeasurementPackage meas_package);
+
+private:
+  /**
+   * Intializes the state and covariance matrices based on the measurement
+   * @param {measurementPackage} meas_package
+   */ 
+  void InitializeMeasurement(MeasurementPackage meas_package);
 };
 
 #endif /* UKF_H */
