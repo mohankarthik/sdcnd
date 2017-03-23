@@ -237,15 +237,57 @@ void UKF::Prediction(double delta_t)
  * Updates the state and the state covariance matrix using a laser measurement.
  * @param {MeasurementPackage} meas_package
  */
-void UKF::UpdateLidar(MeasurementPackage meas_package) {
-  /**
-  TODO:
+void UKF::UpdateLidar(MeasurementPackage meas_package) 
+{
+  MatrixXd Zsig = MatrixXd(n_z_lidar_, n_sig_);
+  VectorXd z_pred = VectorXd(n_z_lidar_);
 
-  Complete this function! Use lidar data to update the belief about the object's
-  position. Modify the state vector, x_, and covariance, P_.
+  /* Just copy over the rows */
+  for(unsigned int i = 0u; i < n_z_lidar_; i++)
+  {
+    Zsig.row(i) = Xsig_pred_.row(i);
+  }
 
-  You'll also need to calculate the lidar NIS.
-  */
+  /* Compute the difference */  
+  z_pred = Zsig * weights_;
+
+  /* Measurement covariance matrix S */
+  MatrixXd S = MatrixXd(n_z_lidar_, n_z_lidar_);
+  S.fill(0.0f);
+  for(unsigned int i = 0u; i < n_sig_; i++) 
+  {
+    VectorXd residual = Zsig.col(i) - z_pred;
+    S = S + (weights_(i) * residual * residual.transpose());
+  }
+
+  /* add measurement noise covariance matrix */
+  MatrixXd R(n_z_lidar_, n_z_lidar_);
+  R <<    std_laspx_*std_laspx_,0.0f,
+          0.0f,std_laspy_*std_laspy_;
+  S = S + R;
+
+  /* Create matrix for cross correlation Tc */
+  MatrixXd Tc = MatrixXd(n_x_, n_z_lidar_);
+  Tc.fill(0.0f);
+  for(unsigned int i = 0u; i < n_sig_; i++)
+  {
+    VectorXd tx = Xsig_pred_.col(i) - x_;
+    VectorXd tz = Zsig.col(i) - z_pred;
+    Tc = Tc + weights_(i)*tx*tz.transpose();
+  }
+
+  /* Kalman filter K */
+  MatrixXd K = Tc * S.inverse();
+
+  /* residual */
+  VectorXd z_diff = meas_package.raw_measurements_ - z_pred;
+
+  /* Update the state and covariance */
+  x_ = x_ + (K * z_diff);
+  P_ = P_ - (K * S * K.transpose());
+
+  /* Compute the NIS */
+  NIS_laser_ = z_diff.transpose() * S.inverse() * z_diff;
 }
 
 /**

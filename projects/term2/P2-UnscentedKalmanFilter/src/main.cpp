@@ -74,7 +74,7 @@ int main(int argc, char* argv[]) {
     string sensor_type;
     MeasurementPackage meas_package;
     istringstream iss(line);
-    long timestamp;
+    long long timestamp;
 
     // reads first element from the current line
     iss >> sensor_type;
@@ -122,6 +122,7 @@ int main(int argc, char* argv[]) {
   for (size_t k = 0; k < number_of_measurements; ++k) {
     // Call the UKF-based fusion
     ukf.ProcessMeasurement(measurement_pack_list[k]);
+    std::cout << ukf.NIS_radar_ << " " << ukf.NIS_laser_ << std::endl;
 
     // output the estimation
     out_file_ << ukf.x_(0) << "\t"; // pos1 - est
