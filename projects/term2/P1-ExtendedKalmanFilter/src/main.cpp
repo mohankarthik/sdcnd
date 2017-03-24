@@ -74,7 +74,7 @@ int main(int argc, char* argv[]) {
     MeasurementPackage meas_package;
     GroundTruthPackage gt_package;
     istringstream iss(line);
-    long timestamp;
+    long long timestamp;
 
     // reads first element from the current line
     iss >> sensor_type;
@@ -170,8 +170,8 @@ int main(int argc, char* argv[]) {
   // compute the accuracy (RMSE)
   Tools tools;
   VectorXd rmse = tools.CalculateRMSE(estimations, ground_truth);
-  cout << "Accuracy - RMSE:" << endl << rmse << endl;
-  cout << "Mean RMSE: " << rmse.sum() << endl;
+  cout << "RMSE" << endl << rmse << endl;
+  //cout << "Mean RMSE: " << rmse.sum() << endl;
 
   // close files
   if (out_file_.is_open()) {

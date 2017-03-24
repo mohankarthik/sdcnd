@@ -5,7 +5,7 @@
 
 class GroundTruthPackage {
 public:
-  long timestamp_;
+  long long timestamp_;
 
   enum SensorType{
     LASER,
@@ -16,4 +16,4 @@ public:
 
 };
 
-#endif /* MEASUREMENT_PACKAGE_H_ */
+#endif /* GROUND_TRUTH_PACKAGE_H_ */

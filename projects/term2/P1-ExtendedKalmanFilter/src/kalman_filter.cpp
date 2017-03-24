@@ -30,3 +30,31 @@ void KalmanFilter::Update(const VectorXd &z)
   x_ = x_ + (K * y);
   P_ = (MatrixXd::Identity(x_.size(), x_.size()) - (K * H_)) * P_;
 }
+
+void KalmanFilter::UpdateEKF(const VectorXd &z) 
+{
+  VectorXd y = z - ProjectToMeasurmentSpace();
+  MatrixXd Ht = H_.transpose();
+  MatrixXd S = (H_ * P_ * Ht) + R_;
+  MatrixXd K = P_ * Ht * S.inverse();
+
+  x_ = x_ + (K * y);
+  P_ = (MatrixXd::Identity(x_.size(), x_.size()) - (K * H_)) * P_;
+}
+
+VectorXd KalmanFilter::ProjectToMeasurmentSpace() 
+{
+    VectorXd measurement_vector(3u);
+
+    float px = x_(0u);
+    float py = x_(1u);
+    float vx = x_(2u);
+    float vy = x_(3u);
+    float norm = sqrt((px * px) + (py * py));
+
+    measurement_vector(0) = norm;
+    measurement_vector(1) = atan2(py, px);
+    measurement_vector(2) = ((px * vx) + (py * vy)) / norm;
+
+    return measurement_vector;
+}

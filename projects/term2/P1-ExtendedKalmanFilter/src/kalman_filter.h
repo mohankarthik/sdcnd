@@ -61,6 +61,17 @@ public:
    */
   void Update(const VectorXd &z);
 
+  /**
+   * Updates the state by using Extended Kalman Filter equations
+   * @param z The measurement at k+1
+   */
+  void UpdateEKF(const VectorXd &z);
+
+  /**
+   * Projects state vector to measurement space
+   */
+  VectorXd ProjectToMeasurmentSpace();
+
 };
 
 #endif /* KALMAN_FILTER_H_ */
