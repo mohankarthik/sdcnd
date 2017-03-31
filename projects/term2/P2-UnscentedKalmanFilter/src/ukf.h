@@ -1,8 +1,14 @@
 #ifndef UKF_H
 #define UKF_H
-#include "Eigen/Dense"
+
 #include "measurement_package.h"
+#include "Eigen/Dense"
 #include <vector>
+#include <string>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include "tools.h"
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -22,8 +28,20 @@ public:
   ///* state vector: [pos1 pos2 vel_abs yaw_angle yaw_rate] in SI units and rad
   VectorXd x_;
 
+  ///* The augmented sigma points
+  MatrixXd Xsig_;
+
   ///* state covariance matrix
   MatrixXd P_;
+
+  ///* Process noise
+  MatrixXd Q_;
+
+  ///* Laser measurement noise
+  MatrixXd R_laser_;
+
+  ///* Laser measurement noise
+  MatrixXd R_radar_;
 
   ///* predicted sigma points matrix
   MatrixXd Xsig_pred_;
@@ -79,13 +97,16 @@ public:
   ///* the current NIS for laser
   double NIS_laser_;
 
+  ///* Diagnostics file
+  bool dbg_enabled_;
+
   ///* Stores the previous measurement, in case we need to restart the filter
   MeasurementPackage prev_meas_package_;
 
   /**
    * Constructor
    */
-  UKF();
+  UKF(bool enable_lidar, bool enable_radar, bool dbg_enabled);
 
   /**
    * Destructor
@@ -123,6 +144,12 @@ private:
    * @param {measurementPackage} meas_package
    */ 
   void InitializeMeasurement(MeasurementPackage meas_package);
+
+  /**
+   * Normalizes a given double angle between -Pi to Pi
+   * @param {measurementPackage} pValue: Variable to be normalized
+   */
+  void NormalizeAngle(double *pValue);
 };
 
 #endif /* UKF_H */

@@ -24,8 +24,9 @@ void KalmanFilter::Update(const VectorXd &z)
 {
   VectorXd y = z - (H_ * x_);
   MatrixXd Ht = H_.transpose();
-  MatrixXd S = (H_ * P_ * Ht) + R_;
-  MatrixXd K = P_ * Ht * S.inverse();
+  MatrixXd Pht = P_ * Ht;
+  MatrixXd S = (H_ * Pht) + R_;
+  MatrixXd K = Pht * S.inverse();
 
   x_ = x_ + (K * y);
   P_ = (MatrixXd::Identity(x_.size(), x_.size()) - (K * H_)) * P_;
@@ -35,8 +36,9 @@ void KalmanFilter::UpdateEKF(const VectorXd &z)
 {
   VectorXd y = z - ProjectToMeasurmentSpace();
   MatrixXd Ht = H_.transpose();
-  MatrixXd S = (H_ * P_ * Ht) + R_;
-  MatrixXd K = P_ * Ht * S.inverse();
+  MatrixXd Pht = P_ * Ht;
+  MatrixXd S = (H_ * Pht) + R_;
+  MatrixXd K = Pht * S.inverse();
 
   x_ = x_ + (K * y);
   P_ = (MatrixXd::Identity(x_.size(), x_.size()) - (K * H_)) * P_;
@@ -52,9 +54,18 @@ VectorXd KalmanFilter::ProjectToMeasurmentSpace()
     float vy = x_(3u);
     float norm = sqrt((px * px) + (py * py));
 
-    measurement_vector(0) = norm;
-    measurement_vector(1) = atan2(py, px);
-    measurement_vector(2) = ((px * vx) + (py * vy)) / norm;
+    /* Check for divide by 0s */
+    if (norm > 0.00001f)
+    {
+      measurement_vector(0) = norm;
+      measurement_vector(1) = atan2(py, px);
+      measurement_vector(2) = ((px * vx) + (py * vy)) / norm;  
+    }
+    else
+    {
+      /* If there is a divide by 0, then revert to using the jacobian instead */
+      measurement_vector = (H_ * x_);
+    }
 
     return measurement_vector;
 }
