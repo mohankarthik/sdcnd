@@ -9,42 +9,47 @@
 #ifndef PARTICLE_FILTER_H_
 #define PARTICLE_FILTER_H_
 
+/* ==================== INCLUDES ==================== */
+#include <vector>
 #include "helper_functions.h"
 
-struct Particle {
+using namespace std;
 
-	int id;
-	double x;
-	double y;
-	double theta;
-	double weight;
+/* =================== DATA TYPES =================== */
+/*! Structure that holds a definition of a single particle */
+struct Particle 
+{
+	int id; /*!< ID of the particle */
+	double x; /*!< The x position */
+	double y; /*!< The y position */
+	double theta; /*!< The current heading */ 
+	double weight; /*!< The weight of the particle */
 };
 
-
-
-class ParticleFilter {
-	
-	// Number of particles to draw
+/* ================ CLASS DEFINITION ================ */
+/*! Defnition of the Particle Filter class */
+class ParticleFilter 
+{
+	/*! Number of particles to draw */
 	int num_particles; 
-	
-	
-	
-	// Flag, if filter is initialized
+		
+	/*! Flag, if filter is initialized */
 	bool is_initialized;
 	
-	// Vector of weights of all particles
+	/*! Vector of weights of all particles */
 	std::vector<double> weights;
 	
 public:
 	
-	// Set of current particles
+	/*! Set of current particles */
 	std::vector<Particle> particles;
 
-	// Constructor
-	// @param M Number of particles
+	/* Constructor
+	 * @param M Number of particles
+	 */
 	ParticleFilter() : num_particles(0), is_initialized(false) {}
 
-	// Destructor
+	/* Destructor */
 	~ParticleFilter() {}
 
 	/**
@@ -69,14 +74,20 @@ public:
 	 */
 	void prediction(double delta_t, double std_pos[], double velocity, double yaw_rate);
 	
+
 	/**
-	 * dataAssociation Finds which observations correspond to which landmarks (likely by using
-	 *   a nearest-neighbors data association).
-	 * @param predicted Vector of predicted landmark observations
-	 * @param observations Vector of landmark observations
+	 * Transforms all the landmarks with respect to this particular particle's 
+	 *    co-ordinate system.
+	 *
+	 * @param [out] transformed_landmarks Vector of landmarks that are now in 
+	 *   the particle's co-ordinate system
+	 * @param [in] particle The particle whose coordinate system we want to convert the
+	 *   landmarks to
+	 * @param [in] map_landmarks All the landmarks
 	 */
-	void dataAssociation(std::vector<LandmarkObs> predicted, std::vector<LandmarkObs>& observations);
-	
+	void transformLandmarks(vector<LandmarkObs>& transformed_landmarks, 
+			const Particle& particle, const Map& map_landmarks) ;
+
 	/**
 	 * updateWeights Updates the weights for each particle based on the likelihood of the 
 	 *   observed measurements. 
@@ -93,7 +104,7 @@ public:
 	 * resample Resamples from the updated set of particles to form
 	 *   the new set of particles.
 	 */
-	void resample();
+	void resample(void);
 	
 	/*
 	 * write Writes particle positions to a file.
@@ -104,11 +115,10 @@ public:
 	/**
 	 * initialized Returns whether particle filter is initialized yet or not.
 	 */
-	const bool initialized() const {
+	const bool initialized() const 
+	{
 		return is_initialized;
 	}
 };
-
-
 
 #endif /* PARTICLE_FILTER_H_ */
