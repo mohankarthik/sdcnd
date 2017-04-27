@@ -11,7 +11,6 @@ set_source_files_properties(${SRCS} PROPERTIES COMPILE_FLAGS -std=c++0x)
 add_executable(particle_filter ${SRCS})
 
 # Use C++11
-
 #if [ ! -f ./src/particle_filter_sol.cpp]; then
 #	echo "No solution file."
 #else
@@ -25,6 +24,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/particle_filter_sol.cpp")
 	# Create the executable
 	add_executable(particle_filter_solution ${SRCS})
 endif()
+
 
 
 
