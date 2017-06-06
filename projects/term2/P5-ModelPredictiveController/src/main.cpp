@@ -11,28 +11,32 @@
 #include "json.hpp"
 
 /* ============================== NAMESPACES =============================== */
-/* Include the json namespace for convinience */
 using json = nlohmann::json;
 
 /* ============================== PROTOTYPES =============================== */
 static double deg2rad(double x);
 static double rad2deg(double x);
-static string hasData(string s);
-static double polyeval(Eigen::VectorXd coeffs, double x);
+static string hasData(string sIn);
+static double polyeval(Eigen::VectorXd vCoeffs, double dPos);
 static Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals, int order);
-static void sendSteer(uWS::WebSocket<uWS::SERVER> ws, MPC mpc, double steer_value, double throttle_value, Eigen::VectorXd &ptsx_vb, Eigen::VectorXd &ptsy_vb);
-
+static void sendSteer(
+  uWS::WebSocket<uWS::SERVER> hWs, MPC hMpc, 
+  double dSteer, double dThrottle, 
+  Eigen::MatrixXd &mCoOrdiates);
+static Eigen::MatrixXd transformToVehicleCoordinates(
+  const vector<double>& vdPtsX, const vector<double>& vdPtsY, 
+  double dWorldX, double dWorldY, double dWorldPsi);
 /* =========================== PUBLIC FUNCTIONS ============================ */
 /*!
  * Application entry point
  */
 int main() 
 {
-  uWS::Hub h;
-  MPC mpc;
+  uWS::Hub hWS;
+  MPC hMpc;
 
   /* On receiving a message */
-  h.onMessage([&mpc](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) 
+  hWS.onMessage([&hMpc](uWS::WebSocket<uWS::SERVER> lhWS, char *data, size_t length, uWS::OpCode opCode) 
   {
     /* "42" at the start of the message means there's a websocket message event.
      * The 4 signifies a websocket message
@@ -41,78 +45,52 @@ int main()
     cout << sdata << endl;
     if (sdata.size() > 2 && sdata[0] == '4' && sdata[1] == '2') 
     {
-      string s = hasData(sdata);
+      string sInput = hasData(sdata);
 
       /* If in autonomous mode */
-      if (s != "")
+      if (sInput != "")
       {
-        auto j = json::parse(s);
-        string event = j[0].get<string>();
-        if (event == "telemetry")
+        auto sJson = json::parse(sInput);
+        string sEvent = sJson[0].get<string>();
+        if (sEvent == "telemetry")
         {
           /* Read the telemetry data */
-          vector<double> ptsx = j[1]["ptsx"];
-          vector<double> ptsy = j[1]["ptsy"];
-          double px = j[1]["x"];
-          double py = j[1]["y"];
-          double psi = j[1]["psi"];
-          double v = j[1]["speed"];
-          double str_ang = j[1]["steering_angle"];
+          const vector<double> vdPtsX = sJson[1]["ptsx"];
+          const vector<double> vdPtsY = sJson[1]["ptsy"];
+          const double dPosX          = sJson[1]["x"];
+          const double dPosY          = sJson[1]["y"];
+          const double dPsi           = sJson[1]["psi"];
+          const double dVel           = sJson[1]["speed"];
 
           /* Convert to vehicle co-ordinate system */
-          Eigen::VectorXd ptsx_vb;
-          Eigen::VectorXd ptsy_vb;
-          ptsx_vb = Eigen::VectorXd(ptsx.size());
-          ptsy_vb = Eigen::VectorXd(ptsy.size());
+          const auto mTransformedWayPoints = transformToVehicleCoordinates(vdPtsX, vdPtsY, dPosX, dPosY, dPsi);
+          const auto vCoeffs  = polyfit(mTransformedWayPoints.col(0), mTransformedWayPoints.col(1), 3);
+          const double dCte   = polyeval(vCoeffs, 0);
+          const double dEpsi  = -atan(vCoeffs(1));
 
-          for (int i = 0; i < ptsx.size(); i++)
-          {
-            ptsx_vb[i] =  (ptsx[i] - px) * cos(psi) + (ptsy[i] - py) * sin(psi);
-            ptsy_vb[i] = -(ptsx[i] - px) * sin(psi) + (ptsy[i] - py) * cos(psi);
-          }
-
-          /* Find the coefficients, by fitting a 3rd order polynomial */
-          Eigen::VectorXd coeffs = polyfit(ptsx_vb, ptsy_vb, 3);
-
-          /* Compensate for the required latency */
-          px  =  (v * MPC_LATENCY_S);
-          psi = -(v * (str_ang / MPC_LF) * MPC_LATENCY_S);
-
-          /** Compute the error terms **/
-          /* The cross track error is calculated by evaluating at polynomial at x, f(x)
-            and subtracting y. x and y are at 0 to represent the car */
-          double cte = polyeval(coeffs, px);
-
-          /* Due to the sign starting at 0, the orientation error is -f'(x).
-            derivative of coeffs[0] + coeffs[1] * x + coeffs[2] * x^2 + coeffs[3] * x^3 -> coeffs[1] 
-            when x = 0
-          */
-          double epsi = -atan(coeffs[1]);
-
-          /* Get the state in the car co-ordinate system */
+          /* Form a state in the car co-ordinate system */
           Eigen::VectorXd vStateInVehicleCoOrds(6);
-          vStateInVehicleCoOrds << px, 0.0, psi, v, cte, epsi;
+          vStateInVehicleCoOrds << 0.0, 0.0, 0.0, dVel, dCte, dEpsi;
 
           /* Run solver to get the next state and the value of the actuators */
-          vector<double> vSolvedState = mpc.Solve(vStateInVehicleCoOrds, coeffs);
+          vector<double> vSolvedState = hMpc.Solve(vStateInVehicleCoOrds, vCoeffs);
 
           /* Send back the steering data */
-          sendSteer(ws, mpc, vSolvedState[6], vSolvedState[7], ptsx_vb, ptsy_vb);          
+          sendSteer(lhWS, hMpc, vSolvedState[6], vSolvedState[7], (Eigen::MatrixXd &)mTransformedWayPoints);          
         }
       }
       /* If manual driving */
       else
       {
-        std::string msg = "42[\"manual\",{}]";
-        ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
+        std::string sMsg = "42[\"manual\",{}]";
+        lhWS.send(sMsg.data(), sMsg.length(), uWS::OpCode::TEXT);
       }
     }
   });
 
   /* We don't need this since we're not using HTTP but if it's removed the
    program doesn't compile :-( */
-  h.onHttpRequest([](uWS::HttpResponse *res, uWS::HttpRequest req, char *data,
-                     size_t, size_t) 
+  hWS.onHttpRequest([](uWS::HttpResponse *res, uWS::HttpRequest req, char *data, size_t, size_t) 
   {
     const std::string s = "<h1>Hello world!</h1>";
     if (req.getUrl().valueLength == 1) 
@@ -125,19 +103,19 @@ int main()
     }
   });
 
-  h.onConnection([&h](uWS::WebSocket<uWS::SERVER> ws, uWS::HttpRequest req) 
+  hWS.onConnection([&hWS](uWS::WebSocket<uWS::SERVER> lhWS, uWS::HttpRequest req) 
   {
     std::cout << "Connected!!!" << std::endl;
   });
 
-  h.onDisconnection([&h](uWS::WebSocket<uWS::SERVER> ws, int code, char *message, size_t length) 
+  hWS.onDisconnection([&hWS](uWS::WebSocket<uWS::SERVER> lhWS, int code, char *message, size_t length) 
   {
-    ws.close();
+    lhWS.close();
     std::cout << "Disconnected" << std::endl;
   });
 
   int port = 4567;
-  if (h.listen(port)) 
+  if (hWS.listen(port)) 
   {
     std::cout << "Listening to port " << port << std::endl;
   } 
@@ -146,7 +124,7 @@ int main()
     std::cerr << "Failed to listen to port" << std::endl;
     return -1;
   }
-  h.run();
+  hWS.run();
 }
 
 /* =========================== STATIC FUNCTIONS ============================ */
@@ -167,65 +145,82 @@ static double rad2deg(double x)
 }
 
 /*!
+ * Convert to vehicle Co-ordinates
+ */
+static Eigen::MatrixXd transformToVehicleCoordinates(
+  const vector<double> &vdPtsX, const vector<double> &vdPtsY,
+  double dWorldX, double dWorldY, double dWorldPsi)
+{
+  const int n = vdPtsX.size();
+  Eigen::MatrixXd mCoords(n,2);
+  mCoords << Eigen::Map<const Eigen::VectorXd>(vdPtsX.data(), vdPtsX.size()),
+             Eigen::Map<const Eigen::VectorXd>(vdPtsY.data(), vdPtsY.size());
+
+  mCoords.rowwise() -= Eigen::RowVector2d(dWorldX, dWorldY);
+
+  Eigen::Matrix2d mMul;
+  mMul << cos(-dWorldPsi), -sin(-dWorldPsi), -sin(-dWorldPsi), -cos(-dWorldPsi);
+
+  return mCoords * mMul.transpose();
+}
+
+/*!
  * Sends back the telemetry data to the simulator
  */
-static void sendSteer(uWS::WebSocket<uWS::SERVER> ws, MPC mpc, 
-                        double steer_value, double throttle_value, 
-                        Eigen::VectorXd &ptsx_vb, Eigen::VectorXd &ptsy_vb)
+static void sendSteer(
+  uWS::WebSocket<uWS::SERVER> hWs, MPC hMpc, 
+  double dSteer, double dThrottle, 
+  Eigen::MatrixXd &mCoOrdiates)
 {
   /* Output telemetry back */
-  json msgJson;
-  vector<double> mpc_x_vals, mpc_y_vals, next_x_vals, next_y_vals;
+  json oMsgJson;
+  vector<double> vdNextX, vdNextY;
 
   /* NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
      Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1]. */
-  msgJson["steering_angle"] =  -steer_value;
-  msgJson["throttle"]       =  throttle_value;
-
-  /* Output from MPC solver */
-  mpc_x_vals  = mpc.mpc_x;
-  mpc_y_vals =  mpc.mpc_y;
+  oMsgJson["steering_angle"] =  dSteer;
+  oMsgJson["throttle"]       =  dThrottle;
 
   /* Add (x,y) points to list here, points are in reference to the vehicle's coordinate system
      the points in the simulator are connected by a Green line */
-  msgJson["mpc_x"] = mpc_x_vals;
-  msgJson["mpc_y"] = mpc_y_vals;
+  oMsgJson["mpc_x"] = hMpc.vdPosX;
+  oMsgJson["mpc_y"] = hMpc.vdPosY;
 
   /* Add (x,y) points to list here, points are in reference to the vehicle's coordinate system
      the points in the simulator are connected by a Yellow line */
-  for (int i = 0;  i < ptsx_vb.size();  i++)
+  for (int i = 0;  i < mCoOrdiates.col(0).size();  i++)
   {   
-    next_x_vals.push_back(ptsx_vb[i]);
-    next_y_vals.push_back(ptsy_vb[i]);
+    vdNextX.push_back(mCoOrdiates.col(0)[i]);
+    vdNextY.push_back(mCoOrdiates.col(1)[i]);
   }
-  msgJson["next_x"] = next_x_vals;
-  msgJson["next_y"] = next_y_vals;
+  oMsgJson["next_x"] = vdNextX;
+  oMsgJson["next_y"] = vdNextY;
 
   /* Dump the JSON */
-  auto msg = "42[\"steer\"," + msgJson.dump() + "]";
-  std::cout << msg << std::endl;
+  auto sMsg = "42[\"steer\"," + oMsgJson.dump() + "]";
+  std::cout << sMsg << std::endl;
 
   this_thread::sleep_for(chrono::milliseconds(MPC_LATENCY_MS));
-  ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
+  hWs.send(sMsg.data(), sMsg.length(), uWS::OpCode::TEXT);
 }
 
 /*!
  * Checks if the SocketIO event has JSON data.
  * If there is data the JSON object in string format will be returned,
  * else the empty string "" will be returned. */
-static string hasData(string s) 
+static string hasData(string sIn) 
 {
-  auto found_null = s.find("null");
-  auto b1 = s.find_first_of("[");
-  auto b2 = s.rfind("}]");
+  auto nIdxNull = sIn.find("null");
+  auto nIdx1 = sIn.find_first_of("[");
+  auto nIdx2 = sIn.rfind("}]");
 
-  if (found_null != string::npos) 
+  if (nIdxNull != string::npos) 
   {
     return "";
   } 
-  else if (b1 != string::npos && b2 != string::npos) 
+  else if (nIdx1 != string::npos && nIdx2 != string::npos) 
   {
-    return s.substr(b1, b2 - b1 + 2);
+    return sIn.substr(nIdx1, nIdx2 - nIdx1 + 2);
   }
 
   return "";
@@ -234,14 +229,14 @@ static string hasData(string s)
 /*!
  * Evaluate a polynomial
  */
-static double polyeval(Eigen::VectorXd coeffs, double x) 
+static double polyeval(Eigen::VectorXd vCoeffs, double dPos) 
 {
-  double result = 0.0;
-  for (int i = 0; i < coeffs.size(); i++) 
+  double dResult = 0.0;
+  for (int32_t i = 0; i < vCoeffs.size(); i++) 
   {
-    result += coeffs[i] * pow(x, i);
+    dResult += vCoeffs[i] * pow(dPos, i);
   }
-  return result;
+  return dResult;
 }
 
 /*! 
@@ -255,14 +250,14 @@ static Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals, int
   assert(order >= 1 && order <= xvals.size() - 1);
   Eigen::MatrixXd A(xvals.size(), order + 1);
 
-  for (int i = 0; i < xvals.size(); i++) 
+  for (int32_t i = 0; i < xvals.size(); i++) 
   {
     A(i, 0) = 1.0;
   }
 
-  for (int j = 0; j < xvals.size(); j++) 
+  for (int32_t j = 0; j < xvals.size(); j++) 
   {
-    for (int i = 0; i < order; i++) 
+    for (int32_t i = 0; i < order; i++) 
     {
       A(j, i + 1) = A(j, i) * xvals(j);
     }
