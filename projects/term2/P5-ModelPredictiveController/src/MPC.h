@@ -6,7 +6,14 @@
 
 using namespace std;
 
-class MPC {
+#define MPC_LATENCY_S	(0.100d)
+#define MPC_LATENCY_MS  (100)
+#define MPC_LF			(2.67d)
+
+#define MPC_SEC_TO_MS	(1000.0d)
+
+class MPC 
+{
  public:
   MPC();
 
