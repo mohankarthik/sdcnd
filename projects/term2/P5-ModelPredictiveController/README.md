@@ -4,10 +4,18 @@ Self-Driving Car Engineer Nanodegree Program
 ## Data Manipulations
 There are two important things to do with the incoming data.
 1. Convert it to vehicle co-ordinates (so that straight lines don't cause numerical issues)
-2. Re-evaluate the state considering the 100ms latency (induced in the simulator)
+2. Re-evaluate the state considering the **100ms** latency (induced in the simulator)
+3. This data is then used to fit a **polynomial** of **order 3**, which reasonably captured the waypoint information.
 
 ## The Model
-Once the data is ready, the model can be formed. The model is based on Model Predictive Control: given a reference trajectory, using lpopt optimizer to optimize a tracjectory/control(steering and throttling) parameters to achive a lowest defined cost function value. The state used in the project includes: poistion x in vechicle coordinates, position y in vechicle coordinates, psi orientation angle in the vechicle cooridnates, velocity, cte cross track error, and orientation error epsi. The actuators are the steering parameter and the throttle parameter that get to sent to the car control as the model output. The updates are performed every moment live.
+Once the data is ready, the model can be formed. The model is based on Model Predictive Control: given a reference trajectory, using lpopt optimizer to optimize a tracjectory/control(steering and throttling) parameters to achive a lowest defined cost function value. The state used in the project includes:
+1. The vehicle position (x & y)
+2. The heading of the vehicle (psi)
+3. The velocity of the vehicle (v)
+4. The cross track error (i.e. offset from center of the road) (cte)
+5. The heading error (i.e. the difference between ideal heading and actual heading) (epsi)
+
+The actuators are the steering parameter and the throttle parameter that get to sent to the car control as the model output. The updates are performed every moment live with a forced latency of 100ms.
 
 ##  Hyper Parameters
 The hyper parmeters (the weights of the cost function, N and dt) were chosen like this
@@ -36,6 +44,8 @@ The hyper parmeters (the weights of the cost function, N and dt) were chosen lik
 #define DT              (0.10) /*!< Every 100ms */
 #define NUM_VARS        (6)
 </pre>
+1. I tried a smaller value of DT (0.01 -> 0.03 -> 0.10), but the model quickly became unstable, so 0.10 was the smallest DT that worked (probably because of machine dependance)
+2. I did not see much improvement increase N further(10 -> 15 -> 20). So for the sake of optimization, I kept N at 10 which seems to almost match the amount of waypoints that we get as well (visually). So I thought that this was a good idea. In places where N * dt exceeds the waypoint input, we can see that the MPC outputs are sometimes wrong, which also makes sense, because it's just wildly guessing there. 
 
 ## Constraint Equation
 Used these equations for the model:
