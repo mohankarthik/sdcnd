@@ -63,6 +63,8 @@ fg[2 + EPSI_START + i] = epsi1 - ((psi0 - psides0) - (v0 * dMultiplier * DT));
 You can modify the W_V parameter in `mpc.cpp` anywhere from 0.1 to 0.01 to influence the driving from reckless to cautious. The performance also depends on your machine, for me 1.0 reaches about 120mph but after a couple of laps becomes unstable. And 0.01 reaches a max of 80mph, is very cautious on the curves and is very stable.
 The 0.1 run on my machine is captured here (https://youtu.be/ndK_wXyNAYc)
 
+## Thoughts
+One interesting idea that I had was, if we had a racing tragectory, you know how racing cars go to the right curb when they've a hard left turn and then turn through the curb, then we would be able to reach much higher speeds and the car would be much more stable too. Making the car drive through the center while trying to race isn't that very optimal :smile:
 
 # Original README
 ---
