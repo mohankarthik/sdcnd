@@ -1,6 +1,62 @@
 # CarND-Controls-MPC
 Self-Driving Car Engineer Nanodegree Program
 
+* The Model
+
+The model is based on Model Predictive Control: given a reference trajectory, using ipopt optimizer to optimize a tracjectory/control(steering and throttling) parameters to achive a lowest defined cost function value. The state used in the project includes: poistion x in vechicle coordinates, position y in vechicle coordinates, psi orientation angle in the vechicle cooridnates, velocity, cte cross track error, and orientation error epsi. The actuators are the steering parameter and the throttle parameter that get to sent to the car control as the model output. The updates are performed everytime the vechicle comes back to the controller with the current state of position, velocity, orientation, throttle and steering, with a reference of target trajectory.
+
+Here is the cost function defined; the emphais is given to minimize cross track error and orientation error, with regard to the reference trajectory, while taking other factors into account, e.g. control smoothness:
+
+<pre>
+double ref_cte = 0;
+double ref_epsi = 0;
+double ref_v = 50;
+
+fg[0] = 0;
+
+for (int i = 0; i < N; i++) {
+    fg[0] += 1000*CppAD::pow(vars[cte_start + i] - ref_cte, 2);
+    fg[0] += 1000*CppAD::pow(vars[epsi_start + i] - ref_epsi, 2);
+    fg[0] += 2*CppAD::pow(vars[v_start + i] - ref_v, 2);
+}
+for (int i = 0; i < N - 1; i++) {
+    fg[0] += CppAD::pow(vars[steer_start + i], 2);
+    fg[0] += CppAD::pow(vars[throttle_start + i], 2);
+}
+
+for (int i = 0; i < N - 2; i++) {
+    fg[0] += CppAD::pow(vars[steer_start + i + 1] - vars[steer_start + i], 2);
+    fg[0] += CppAD::pow(vars[throttle_start + i + 1] - vars[throttle_start + i], 2);
+}
+</pre>
+
+Used these equations for the model:
+<pre>
+x_[t+1] = x[t] + v[t] * cos(psi[t]) * dt
+y_[t+1] = y[t] + v[t] * sin(psi[t]) * dt
+psi_[t+1] = psi[t] - v[t] / Lf * delta[t] * dt
+v_[t+1] = v[t] + a[t] * dt
+cte[t+1] = f(x[t]) - y[t] + v[t] * sin(epsi[t]) * dt
+epsi[t+1] = psi[t] - psides[t] - v[t] * delta[t] / Lf * dt
+
+</pre>
+
+* Timestep Length and Elapsed Duration (N & dt)
+
+The timestep choosen is N=10 and duration dt 0.1 second. These seem to be moderate values, given the target spped of 50mph, not too far into the future, while have a meaningfully long trajectory to coincide with the reference trajectory. Previously also tried N of 25, which worked with a lower speed.
+
+* Polynomial Fitting and MPC Preprocessing
+
+Uses a third order polynomial, which was mentioned in the lecture to work in the real world scenario.
+
+* If the student preprocesses waypoints, the vehicle state, and/or actuators prior to the MPC procedure it is described.
+
+All the reference trajectory waypoints and the latency prediction are done in the vechicle's coordinate frame. This is very important, because the vechicle coordinate frame centers the vechiles at 0.0, 0.0 and makes any incremental calculation so much more accurate. The map coordinates are all transformed into vechicle coordinates, taking into account both vechicle position and orientation.
+
+* Model Predictive Control with Latency
+
+The 100 millisecond latency is handled by using the vechicle's current position/orientation/steering/throttle and project 100 millisecond into the future. This projected future state expected 100 millisecond later is used as the initial state for the MPC controller.
+
 ---
 
 ## Dependencies
@@ -15,20 +71,11 @@ Self-Driving Car Engineer Nanodegree Program
   * Linux: gcc / g++ is installed by default on most Linux distros
   * Mac: same deal as make - [install Xcode command line tools]((https://developer.apple.com/xcode/features/)
   * Windows: recommend using [MinGW](http://www.mingw.org/)
-* [uWebSockets](https://github.com/uWebSockets/uWebSockets)
-  * Run either `install-mac.sh` or `install-ubuntu.sh`.
-  * If you install from source, checkout to commit `e94b6e1`, i.e.
-    ```
-    git clone https://github.com/uWebSockets/uWebSockets 
-    cd uWebSockets
-    git checkout e94b6e1
-    ```
-    Some function signatures have changed in v0.14.x. See [this PR](https://github.com/udacity/CarND-MPC-Project/pull/3) for more details.
-* Fortran Compiler
-  * Mac: `brew install gcc` (might not be required)
-  * Linux: `sudo apt-get install gfortran`. Additionall you have also have to install gcc and g++, `sudo apt-get install gcc g++`. Look in [this Dockerfile](https://github.com/udacity/CarND-MPC-Quizzes/blob/master/Dockerfile) for more info.
+* [uWebSockets](https://github.com/uWebSockets/uWebSockets) == 0.14, but the master branch will probably work just fine
+  * Follow the instructions in the [uWebSockets README](https://github.com/uWebSockets/uWebSockets/blob/master/README.md) to get setup for your platform. You can download the zip of the appropriate version from the [releases page](https://github.com/uWebSockets/uWebSockets/releases). Here's a link to the [v0.14 zip](https://github.com/uWebSockets/uWebSockets/archive/v0.14.0.zip).
+  * If you have MacOS and have [Homebrew](https://brew.sh/) installed you can just run the ./install-mac.sh script to install this.
 * [Ipopt](https://projects.coin-or.org/Ipopt)
-  * Mac: `brew install ipopt`
+  * Mac: `brew install ipopt --with-openblas`
   * Linux
     * You will need a version of Ipopt 3.12.1 or higher. The version available through `apt-get` is 3.11.x. If you can get that version to work great but if not there's a script `install_ipopt.sh` that will install Ipopt. You just need to download the source from the Ipopt [releases page](https://www.coin-or.org/download/source/Ipopt/) or the [Github releases](https://github.com/coin-or/Ipopt/releases) page.
     * Then call `install_ipopt.sh` with the source directory as the first argument, ex: `bash install_ipopt.sh Ipopt-3.12.1`. 
@@ -38,8 +85,8 @@ Self-Driving Car Engineer Nanodegree Program
   * Linux `sudo apt-get install cppad` or equivalent.
   * Windows: TODO. If you can use the Linux subsystem and follow the Linux instructions.
 * [Eigen](http://eigen.tuxfamily.org/index.php?title=Main_Page). This is already part of the repo so you shouldn't have to worry about it.
-* Simulator. You can download these from the [releases tab](https://github.com/udacity/self-driving-car-sim/releases).
-* Not a dependency but read the [DATA.md](./DATA.md) for a description of the data sent back from the simulator.
+* Simulator. You can download these from the [releases tab](https://github.com/udacity/CarND-MPC-Project/releases).
+
 
 
 ## Basic Build Instructions

@@ -1,17 +1,14 @@
 #ifndef MPC_H
 #define MPC_H
 
+/* ==================== INCLUDES ==================== */
 #include <vector>
 #include "Eigen-3.3/Eigen/Core"
 
+/* =================== NAMESPACES =================== */
 using namespace std;
 
-#define MPC_LATENCY_S	(0.100d)
-#define MPC_LATENCY_MS  (100)
-#define MPC_LF			(2.67d)
-
-#define MPC_SEC_TO_MS	(1000.0d)
-
+/* ================ CLASS DEFINITION ================ */
 class MPC 
 {
  public:
@@ -19,12 +16,20 @@ class MPC
 
   virtual ~MPC();
 
-  vector<double> mpc_x;
-  vector<double> mpc_y;
-
-  // Solve the model given an initial state and polynomial coefficients.
-  // Return the first actuatotions.
+  /*! 
+   * Solve the model given an initial state and polynomial coefficients
+   * Return the first actuatotions
+   */
   vector<double> Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs);
+
+  /*!
+   * Gets the latest X and Y tragectories
+   */
+  vector<double> getXs();
+  vector<double> getYs();
+  
+ private:
+  vector<double> gvSolX;
 };
 
 #endif /* MPC_H */
