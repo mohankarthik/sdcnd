@@ -1,62 +1,60 @@
 # CarND-Controls-MPC
 Self-Driving Car Engineer Nanodegree Program
 
-* The Model
+## Data Manipulations
+There are two important things to do with the incoming data.
+1. Convert it to vehicle co-ordinates (so that straight lines don't cause numerical issues)
+2. Re-evaluate the state considering the 100ms latency (induced in the simulator)
 
-The model is based on Model Predictive Control: given a reference trajectory, using ipopt optimizer to optimize a tracjectory/control(steering and throttling) parameters to achive a lowest defined cost function value. The state used in the project includes: poistion x in vechicle coordinates, position y in vechicle coordinates, psi orientation angle in the vechicle cooridnates, velocity, cte cross track error, and orientation error epsi. The actuators are the steering parameter and the throttle parameter that get to sent to the car control as the model output. The updates are performed everytime the vechicle comes back to the controller with the current state of position, velocity, orientation, throttle and steering, with a reference of target trajectory.
+## The Model
+Once the data is ready, the model can be formed. The model is based on Model Predictive Control: given a reference trajectory, using lpopt optimizer to optimize a tracjectory/control(steering and throttling) parameters to achive a lowest defined cost function value. The state used in the project includes: poistion x in vechicle coordinates, position y in vechicle coordinates, psi orientation angle in the vechicle cooridnates, velocity, cte cross track error, and orientation error epsi. The actuators are the steering parameter and the throttle parameter that get to sent to the car control as the model output. The updates are performed every moment live.
 
-Here is the cost function defined; the emphais is given to minimize cross track error and orientation error, with regard to the reference trajectory, while taking other factors into account, e.g. control smoothness:
+##  Hyper Parameters
+The hyper parmeters (the weights of the cost function, N and dt) were chosen like this
 
+### Wetights
 <pre>
-double ref_cte = 0;
-double ref_epsi = 0;
-double ref_v = 50;
-
-fg[0] = 0;
-
-for (int i = 0; i < N; i++) {
-    fg[0] += 1000*CppAD::pow(vars[cte_start + i] - ref_cte, 2);
-    fg[0] += 1000*CppAD::pow(vars[epsi_start + i] - ref_epsi, 2);
-    fg[0] += 2*CppAD::pow(vars[v_start + i] - ref_v, 2);
-}
-for (int i = 0; i < N - 1; i++) {
-    fg[0] += CppAD::pow(vars[steer_start + i], 2);
-    fg[0] += CppAD::pow(vars[throttle_start + i], 2);
-}
-
-for (int i = 0; i < N - 2; i++) {
-    fg[0] += CppAD::pow(vars[steer_start + i + 1] - vars[steer_start + i], 2);
-    fg[0] += CppAD::pow(vars[throttle_start + i + 1] - vars[throttle_start + i], 2);
-}
+#define W_CTE           (1000.0) /*!< CTE and EPSI is very important */
+#define W_EPSI          (1000.0)
+#define W_V             (0.01)   /*!< Increase this for more reckless behaviour :P */
+#define W_STEER         (1.0)    /*!< These are all equally important */
+#define W_THROTTLE      (1.0)  
+#define W_STEER_DIFF    (1.0)
+#define W_THROTTLE_DIFF (1.0)
 </pre>
 
+### Reference values
+<pre>
+#define REF_CTE         (0.0)
+#define REF_EPSI        (0.0)
+#define REF_V           (200.0) /*!< Aim for the maximum speed possible */
+</pre>
+
+### MPC values
+<pre>
+#define N               (10)   /*!< Predict 1 second in future */
+#define DT              (0.10) /*!< Every 100ms */
+#define NUM_VARS        (6)
+</pre>
+
+## Constraint Equation
 Used these equations for the model:
 <pre>
-x_[t+1] = x[t] + v[t] * cos(psi[t]) * dt
-y_[t+1] = y[t] + v[t] * sin(psi[t]) * dt
-psi_[t+1] = psi[t] - v[t] / Lf * delta[t] * dt
-v_[t+1] = v[t] + a[t] * dt
-cte[t+1] = f(x[t]) - y[t] + v[t] * sin(epsi[t]) * dt
-epsi[t+1] = psi[t] - psides[t] - v[t] * delta[t] / Lf * dt
-
+const auto dMultiplier = (steer0 / LF);
+fg[2 + X_START + i] = x1 - (x0 + (v0 * CppAD::cos(psi0) * DT));
+fg[2 + Y_START + i] = y1 - (y0 + (v0 * CppAD::sin(psi0) * DT));
+fg[2 + PSI_START + i] = psi1 - (psi0 - (v0 * dMultiplier * DT));
+fg[2 + V_START + i] = v1 - (v0 + (throttle0 * DT));
+fg[2 + CTE_START + i] = cte1 - ((f0 - y0) + (v0 * CppAD::sin(epsi0) * DT));
+fg[2 + EPSI_START + i] = epsi1 - ((psi0 - psides0) - (v0 * dMultiplier * DT));
 </pre>
 
-* Timestep Length and Elapsed Duration (N & dt)
+## Playing with the solution
+You can modify the W_V parameter in `mpc.cpp` anywhere from 0.1 to 0.01 to influence the driving from reckless to cautious. The performance also depends on your machine, for me 1.0 reaches about 120mph but after a couple of laps becomes unstable. And 0.01 reaches a max of 80mph, is very cautious on the curves and is very stable.
+The 0.1 run on my machine is captured here (https://youtu.be/ndK_wXyNAYc)
 
-The timestep choosen is N=10 and duration dt 0.1 second. These seem to be moderate values, given the target spped of 50mph, not too far into the future, while have a meaningfully long trajectory to coincide with the reference trajectory. Previously also tried N of 25, which worked with a lower speed.
 
-* Polynomial Fitting and MPC Preprocessing
-
-Uses a third order polynomial, which was mentioned in the lecture to work in the real world scenario.
-
-* If the student preprocesses waypoints, the vehicle state, and/or actuators prior to the MPC procedure it is described.
-
-All the reference trajectory waypoints and the latency prediction are done in the vechicle's coordinate frame. This is very important, because the vechicle coordinate frame centers the vechiles at 0.0, 0.0 and makes any incremental calculation so much more accurate. The map coordinates are all transformed into vechicle coordinates, taking into account both vechicle position and orientation.
-
-* Model Predictive Control with Latency
-
-The 100 millisecond latency is handled by using the vechicle's current position/orientation/steering/throttle and project 100 millisecond into the future. This projected future state expected 100 millisecond later is used as the initial state for the MPC controller.
-
+# Original README
 ---
 
 ## Dependencies

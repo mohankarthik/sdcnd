@@ -14,14 +14,14 @@ using CppAD::AD;
 #define THROTTLE_LIMIT  (1.0)
 
 /** MPC MACROS **/
-#define N               (10)
-#define DT              (0.10)
+#define N               (10)   /*!< Predict 1 second in future */
+#define DT              (0.10) /*!< Every 100ms */
 #define NUM_VARS        (6)
 
 /** WEIGHTS **/
-#define W_CTE           (1000.0)
-#define W_EPSI          (1000.0)
-#define W_V             (0.01)
+#define W_CTE           (1000.0) /*!< CTE and EPSI is very important */
+#define W_EPSI          (1000.0) 
+#define W_V             (0.01)   /*!< Increase this for more reckless behaviour :P */
 #define W_STEER         (1.0)
 #define W_THROTTLE      (1.0)
 #define W_STEER_DIFF    (1.0)
@@ -30,7 +30,7 @@ using CppAD::AD;
 /** REFERENCE VALUES **/
 #define REF_CTE         (0.0)
 #define REF_EPSI        (0.0)
-#define REF_V           (200.0)
+#define REF_V           (200.0)  /*!< Aim for the maximum speed possible */
 
 /** MISC **/
 #define INF             (1.0e19)
