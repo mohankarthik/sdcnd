@@ -718,20 +718,20 @@ private:
 	 */
 	int ClosestWaypoint(void)
 	{
-		double closestLen = numeric_limits<double>::infinity();
-		int closestWaypoint = 0;
+		double dLen = numeric_limits<double>::infinity();
+		int nWP = 0;
 
 		/* Loop through all the waypoints and find the closest one */
 		for(int i = 0; i < nWpSize; i++) 
 		{
-			const double dist = distance(oCar.x, oCar.y, oMap.x[i], oMap.y[i]);
-			if(dist < closestLen) 
+			const double dDist = distance(oCar.x, oCar.y, oMap.x[i], oMap.y[i]);
+			if(dDist < dLen) 
 			{
-				closestLen = dist;
-				closestWaypoint = i;
+				dLen = dDist;
+				nWP = i;
 			}
 		}
-		return closestWaypoint;
+		return nWP;
 	}
 
 	/*!
@@ -742,26 +742,26 @@ private:
 	int NextWaypoint(void) 
 	{
 		/* Get the closest waypoint */
-		int closestWaypoint = ClosestWaypoint();
+		int nWP = ClosestWaypoint();
 
 		/* Compute the heading of the car relative to the closest waypoint */
-		const double heading = atan2((oMap.y[closestWaypoint] - oCar.y), (oMap.x[closestWaypoint] - oCar.x));
+		const double dHeading = atan2((oMap.y[nWP] - oCar.y), (oMap.x[nWP] - oCar.x));
 
 		/* If the car is not heading towards the next waypoint (i.e: it's behind us), then choose
 		the next one instead */
-		const double yaw_r = abs(oCar.yaw_d - heading);
-		if(yaw_r > (M_PI / 4.0))
+		const double dAngleDiff = abs(oCar.yaw_d - dHeading);
+		if(dAngleDiff > (M_PI / 4.0))
 		{
-			closestWaypoint++;
+			nWP++;
 
 			/* Loop around if required */
-			if (closestWaypoint >= nWpSize)
+			if (nWP >= nWpSize)
 			{
-				closestWaypoint = 0;
+				nWP = 0;
 			}
 		}
 
-		return closestWaypoint;
+		return nWP;
 	}
 
 	/*! 
@@ -772,53 +772,53 @@ private:
 	vd_t getFrenet(void)
 	{
 		/* Get the next & previous way points */
-		int next_wp = NextWaypoint();
-		int prev_wp;
-		if(next_wp == 0) 
+		int nNextWP = NextWaypoint();
+		int nPrevWP;
+		if(nNextWP == 0) 
 		{
-			prev_wp  = nWpSize - 1;
+			nPrevWP  = nWpSize - 1;
 		}
 		else
 		{
-			prev_wp = next_wp - 1;
+			nPrevWP = nNextWP - 1;
 		}
 
 		/* Compute the projection n */
-		const double n_x = oMap.x[next_wp] - oMap.x[prev_wp];
-		const double n_y = oMap.y[next_wp] - oMap.y[prev_wp];
-		const double x_x = oCar.x - oMap.x[prev_wp];
-		const double x_y = oCar.y - oMap.y[prev_wp];
+		const double dNX = oMap.x[nNextWP] - oMap.x[nPrevWP];
+		const double dNY = oMap.y[nNextWP] - oMap.y[nPrevWP];
+		const double dXX = oCar.x - oMap.x[nPrevWP];
+		const double dXY = oCar.y - oMap.y[nPrevWP];
 
 		/* find the projection of x onto n */
-		const double proj_norm = (((x_x * n_x) + (x_y * n_y)) / ((n_x * n_x) + (n_y * n_y)));
-		const double proj_x = proj_norm * n_x;
-		const double proj_y = proj_norm * n_y;
+		const double dProjNorm = (((dXX * dNX) + (dXY * dNY)) / ((dNX * dNX) + (dNY * dNY)));
+		const double dProjX = dProjNorm * dNX;
+		const double dProjY = dProjNorm * dNY;
 
 		/* Compute the d */
-		double frenet_d = distance(x_x, x_y, proj_x, proj_y);
+		double dFrenetD = distance(dXX, dXY, dProjX, dProjY);
 
 		/* See if d value is positive or negative by comparing it to a center point */
-		const double center_x = 1000.0 - oMap.x[prev_wp];
-		const double center_y = 2000.0 - oMap.y[prev_wp];
-		const double centerToPos = distance(center_x, center_y, x_x, x_y);
-		const double centerToRef = distance(center_x, center_y, proj_x, proj_y);
+		const double dCenterX = 1000.0 - oMap.x[nPrevWP];
+		const double dCenterY = 2000.0 - oMap.y[nPrevWP];
+		const double dCenterToPos = distance(dCenterX, dCenterY, dXX, dXY);
+		const double dCenterToRef = distance(dCenterX, dCenterY, dProjX, dProjY);
 
 		/* If we are on the other side */
-		if(centerToPos <= centerToRef) 
+		if(dCenterToPos <= dCenterToRef) 
 		{
-			frenet_d *= -1;
+			dFrenetD *= -1.0;
 		}
 
 		/* calculate s value */
-		double frenet_s = 0.0;
-		for(int i = 0; i < prev_wp; i++) 
+		double dFrenetS = 0.0;
+		for(int i = 0; i < nPrevWP; i++) 
 		{
-			frenet_s += distance(oMap.x[i], oMap.y[i], oMap.x[i+1], oMap.y[i+1]);
+			dFrenetS += distance(oMap.x[i], oMap.y[i], oMap.x[i+1], oMap.y[i+1]);
 		}
-		frenet_s += distance(0.0, 0.0, proj_x, proj_y);
+		dFrenetS += distance(0.0, 0.0, dProjX, dProjY);
 
 		/* Return the values */
-		return {frenet_s,frenet_d};
+		return {dFrenetS, dFrenetD};
 	}
 
 
@@ -826,36 +826,36 @@ private:
 	 * @brief: Transform from global Cartesian x,y to local car coordinates x,y
 	 * where x is pointing to the positive x axis and y is deviation from the car's path
 
-	 * @param [in] wx, wy: The world point to be projected onto the car co-ordinate system
+	 * @param [in] dX, dY: The world point to be projected onto the car co-ordinate system
 	 *
-	 * @return: {x,y}, the point (wx, wy) in the car co-ordinate system.
+	 * @return: {x,y}, the point (dX, dY) in the car co-ordinate system.
 	 */
-	vd_t getLocalXY(const double wx, const double wy)
+	vd_t getLocalXY(const double dX, const double dY)
 	{
-		vd_t results;
+		vd_t vResults;
 
-		const float deltax = (wx - oCar.x);
-		const float deltay = (wy - oCar.y);
+		const float dDeltaX = (dX - oCar.x);
+		const float dDeltaY = (dY - oCar.y);
 
-		results.push_back((deltax  * cos(oCar.yaw_r)) + (deltay * sin(oCar.yaw_r)));
-		results.push_back((-deltax * sin(oCar.yaw_r)) + (deltay * cos(oCar.yaw_r)));
+		vResults.push_back((dDeltaX  * cos(oCar.yaw_r)) + (dDeltaY * sin(oCar.yaw_r)));
+		vResults.push_back((-dDeltaX * sin(oCar.yaw_r)) + (dDeltaY * cos(oCar.yaw_r)));
 
-		return results;
+		return vResults;
 	}
 
 	/*!
 	 * @brief: Transforms from the local car cordinates to world co-ordinate system
 	 *
-	 * @param [in] lx, ly: The local car point to be projected onto the world co-ordinate system
+	 * @param [in] dX, dY: The local car point to be projected onto the world co-ordinate system
 	 *
-	 * @return: {x,y}, the point (lx, ly) in the world co-ordinate system.
+	 * @return: {x,y}, the point (dX, dY) in the world co-ordinate system.
 	 */
-	vd_t getWorldXY(const double lx, const double ly)
+	vd_t getWorldXY(const double dX, const double dY)
 	{
 		vd_t results;
 
-		results.push_back((lx * cos(oCar.yaw_r)) - (ly * sin(oCar.yaw_r)) + oCar.x);
-		results.push_back((lx * sin(oCar.yaw_r)) + (ly * cos(oCar.yaw_r)) + oCar.y);
+		results.push_back((dX * cos(oCar.yaw_r)) - (dY * sin(oCar.yaw_r)) + oCar.x);
+		results.push_back((dX * sin(oCar.yaw_r)) + (dY * cos(oCar.yaw_r)) + oCar.y);
 
 		return results;
 	}
@@ -869,9 +869,9 @@ private:
 	 */
 	vvd_t getLocalWPSeg(void)
 	{
-		vd_t vvWpX;
-		vd_t vvWpY;
-		vvd_t results;
+		vd_t vWpX;
+		vd_t vWpY;
+		vvd_t vvResults;
 
 		/* Get the farthest past waypoint on the spline */
 		int nWp = ClosestWaypoint();
@@ -887,42 +887,42 @@ private:
 			const int nNextWP = (nPrevWP + i) % nWpSize;
 			const vd_t localxy = getLocalXY((oMap.x[nNextWP] + (dNextD * oMap.dx[nNextWP])), (oMap.y[nNextWP] + (dNextD * oMap.dy[nNextWP])));
 
-			vvWpX.push_back(localxy[0]);
-			vvWpY.push_back(localxy[1]);
+			vWpX.push_back(localxy[0]);
+			vWpY.push_back(localxy[1]);
 		}
 
-		results.push_back(vvWpX);
-		results.push_back(vvWpY);
+		vvResults.push_back(vWpX);
+		vvResults.push_back(vWpY);
 
-		return results;
+		return vvResults;
 	}
 
 	/*!
 	 * @brief: Convert a set of world x,y vector coordinates to local x y vectors
 	 *
-	 * @param [in] wx, wy: A set of world points to be projected onto the car co-ordinate system
+	 * @param [in] vdX, vdY: A set of world points to be projected onto the car co-ordinate system
 	 *
-	 * @return: {{x's},{y's}}, the points {{wx's}, {wy's}} in the car co-ordinate system.
+	 * @return: {{x's},{y's}}, the points {{vdX's}, {vdY's}} in the car co-ordinate system.
 	 */
-	vvd_t getLocalPoints(const vd_t wx, const vd_t wy) 
+	vvd_t getLocalPoints(const vd_t vdX, const vd_t vdY) 
 	{
-		vd_t lx;
-		vd_t ly;
-		vvd_t results;
+		vd_t vLocalX;
+		vd_t vLocalY;
+		vvd_t vvResults;
 
-		const int sz = wx.size();
+		const int sz = vdX.size();
 
 		/* Loop around and push the points in */
 		for (int i = 0; i < sz; i++) 
 		{
-			const vd_t localxy = getLocalXY(wx[i], wy[i]);
-			lx.push_back(localxy[0]);
-			ly.push_back(localxy[1]);
+			const vd_t localxy = getLocalXY(vdX[i], vdY[i]);
+			vLocalX.push_back(localxy[0]);
+			vLocalY.push_back(localxy[1]);
 		}
-		results.push_back(lx);
-		results.push_back(ly);
+		vvResults.push_back(vLocalX);
+		vvResults.push_back(vLocalY);
 
-		return results;
+		return vvResults;
 	}
 
 	/*!
@@ -934,26 +934,26 @@ private:
 	 *
 	 * @return: {{x's},{y's}}, the points {{lx's}, {ly's}} in the world co-ordinate system.
 	 */
-	vvd_t getWorldPoints(const vd_t lx, const vd_t ly) 
+	vvd_t getWorldPoints(const vd_t vdX, const vd_t vdY) 
 	{
-		vd_t wx;
-		vd_t wy;
-		vvd_t results;
+		vd_t vWorldX;
+		vd_t vWorldY;
+		vvd_t vvResults;
 
 		/* Store the size */
-		const int sz = lx.size();
+		const int sz = vdX.size();
 
 		/* Loop around and push the points in */
 		for (int i = 0; i < sz; i++) 
 		{
-			const vd_t worldxy = getWorldXY(lx[i], ly[i]);
-			wx.push_back(worldxy[0]);
-			wy.push_back(worldxy[1]);
+			const vd_t worldxy = getWorldXY(vdX[i], vdY[i]);
+			vWorldX.push_back(worldxy[0]);
+			vWorldY.push_back(worldxy[1]);
 		}
-		results.push_back(wx);
-		results.push_back(wy);
+		vvResults.push_back(vWorldX);
+		vvResults.push_back(vWorldY);
 
-		return results;
+		return vvResults;
 	}
 };
 
