@@ -104,470 +104,23 @@ public:
 		vvSensorFusion = SensorFusion;
 
 		/* Save the previous path size */
-		const int path_size = vvPrevPath[0].size();
+		nPrevPathSz = vvPrevPath[0].size();
 
 		/* Setup a lane tracker */
 		spline hLaneSpline;
 		TrackLane(hLaneSpline);
 
 		/* If this is the first cycle */
-		if (path_size == 0)
+		if (nPrevPathSz == 0)
 		{
-		  HandleFirstCycle(hLaneSpline, vvResult);
+		  	HandleFirstCycle(hLaneSpline, vvResult);
 		}
-		
-		exit(1);
+		else
+		{
+			HandleGenericCycle(hLaneSpline);
+		}
 
 		return vvResult;
-
-#if 0
-    // at beginning - no paths
-    if (path_size == 0)
-    {
-      t.push_back(double(-1));
-      t.push_back(double(15));
-      t.push_back(double(25));
-      t.push_back(double(num_points));
-      t.push_back(double(num_points*2));
-      inc.push_back(dist_inc*0.01);
-      inc.push_back(dist_inc*0.10);
-      inc.push_back(dist_inc*0.15);
-      inc.push_back(dist_inc*0.25);
-      inc.push_back(dist_inc*0.35);
-      inc.push_back(dist_inc);
-      smooth_speed.set_points(t,inc);
-
-      double nextlwpx = 0.;
-      double nextlwpy;
-      for (int i = 0; i<num_points; i++)
-      {
-        nextlwpx += smooth_speed(double(i));
-        nextlwpy = smooth_lanes(nextlwpx);
-        lx.push_back(nextlwpx);
-        ly.push_back(nextlwpy);
-        if (i > 0)
-          vd.push_back(distance(lx[i-1], ly[i-1], lx[i], ly[i]));
-        else
-          vd.push_back(smooth_speed(double(0)));
-      }
-
-      // calculate the smoother path
-      double localxx = 0.;
-      double localxy = 0.;
-      for(int i = 0; i < num_points; i++)
-      {
-        ly[i] = smooth_lanes(lx[i]);
-        double dist = distance(localxx, localxy, lx[i], ly[i]);
-        double speed = smooth_speed(double(i));
-        if (dist > speed || dist < speed*0.8)
-        {
-           double heading = atan2(ly[i]-localxy,lx[i]-localxx);
-           lx[i] = localxx + smooth_speed(double(i))*cos(heading);
-           ly[i] = smooth_lanes(lx[i]);
-           dist = distance(localxx, localxy, lx[i], ly[i]);
-        }
-        localxx = lx[i];
-        localxy = ly[i];
-      }
-
-      vvd_t worldxy = getWorldPoints(car_x, car_y, car_yaw_d, lx, ly);
-      for (int i=path_size; i<worldxy[0].size(); i++) {
-        vx.push_back(worldxy[0][i]);
-        vy.push_back(worldxy[1][i]);
-        next_x_vals.push_back(worldxy[0][i]);
-        next_y_vals.push_back(worldxy[1][i]);
-      }
-      out_log << timestep << "," << car_x << "," << car_y << ","  << "0,0," << nextd << "," << frenet[1] << "," << stucktimer << std::endl;
-
-    // we are already moving...
-    } else {
-      vvd_t previous_localxy = getLocalPoints(car_x, car_y, car_yaw_d, previous_path_x, previous_path_y);
-      lx = previous_localxy[0];
-      ly = previous_localxy[1];
-
-      for (int i = 0; i < (num_points-path_size); i++)
-      {
-        vd_t frenet = getFrenet(vx[i], vy[i], deg2rad(car_yaw_d), vWpX, vWpY);
-        out_log << timestep << "," << vx[i] << "," << vy[i] << "," << vd[i] << "," << xyd[i] << "," << nextd << "," << frenet[1] << "," << stucktimer << std::endl;
-      }
-      vx.erase(vx.begin(),vx.begin()+(num_points-path_size));
-      vy.erase(vy.begin(),vy.begin()+(num_points-path_size));
-      vd.erase(vd.begin(),vd.begin()+(num_points-path_size));
-      xyd.erase(xyd.begin(),xyd.begin()+(num_points-path_size));
-
-      // if we are changing lanes
-      if (lanechange && abs(smooth_lanes(0.)) < 0.01) {
-        lanechange = false;
-      }
-
-      // make a smoother waypoint polyline
-      vvd_t newwxy = getLocalWPSeg(car_x, car_y, car_yaw_d, nextd, vWpX, vWpY, vWpDx, vWpDy);
-      if (newwxy[0][0] > 0.) {
-        car_yaw_d += 180;
-        cout << "wrong direction detected! car x,y,yaw_d: " << car_x << "," << car_y << "," << car_yaw_d-180 << " new yaw_d: " << car_yaw_d << endl;
-        newwxy = getLocalWPSeg(car_x, car_y, car_yaw_d, nextd, vWpX, vWpY, vWpDx, vWpDy);
-      }
-      tk::spline newlane;
-      newlane.set_points(newwxy[0], newwxy[1]);
-      vd_t localwx;
-      vd_t localwy;
-      for (int i; i<path_size; i++) {
-        localwx.push_back(lx[i]);
-        localwy.push_back(ly[i]);
-      }
-      double nextx = lx[path_size-1]+40;
-      for (int i; i<path_size; i++) {
-        localwx.push_back(nextx);
-        localwy.push_back(newlane(nextx));
-        nextx += dist_inc;
-      }
-      smooth_lanes.set_points(localwx, localwy);
-
-      for(int i = 0; i < path_size; i++) {
-        next_x_vals.push_back(previous_path_x[i]);
-        next_y_vals.push_back(previous_path_y[i]);
-      }
-
-      t.push_back(0.);
-      t.push_back(double(250));
-      if (vd[0] < inc_max) {
-        inc.push_back(vd[0]);
-      } else {
-        inc.push_back(vd[path_size-1]);
-      }
-      inc.push_back(dist_inc);
-      smooth_speed.set_points(t,inc);
-
-      std::cout << "x,y: " << car_x << "," << car_y << " Time=[" << timestep <<":" << stucktimer << "] localy=[" << smooth_lanes(0.) << "], frenet_d=[" << frenet[1] << "]" << std::endl;
-
-      // filler
-      for(int i = path_size; i<num_points; i++) {
-        lx.push_back(lx[i-1]+smooth_speed(double(i)));
-        ly.push_back(smooth_lanes(lx[i]));
-        vx.push_back(0.0);
-        vy.push_back(0.0);
-        next_x_vals.push_back(0.0);
-        next_y_vals.push_back(0.0);
-      }
-
-      // calculate the smoother path
-      double localxx = lx[0];
-      double localxy = ly[0];
-      for(int i = 0; i < num_points; i++)
-      {
-        ly[i] = smooth_lanes(lx[i]);
-        double dist = distance(localxx, localxy, lx[i], ly[i]);
-        if (dist > smooth_speed(double(i)))
-        {
-           double heading = atan2(ly[i]-localxy,lx[i]-localxx);
-           lx[i] = localxx + smooth_speed(double(i))*cos(heading);
-           ly[i] = smooth_lanes(lx[i]);
-           dist = distance(localxx, localxy, lx[i], ly[i]);
-        }
-        if (i >= path_size)
-          vd.push_back(dist);
-        localxx = lx[i];
-        localxy = ly[i];
-      }
-
-      vvd_t worldxy = getWorldPoints(car_x, car_y, car_yaw_d, lx, ly);
-      for (int i=path_size; i<worldxy[0].size(); i++) {
-        vx[i] = worldxy[0][i];
-        vy[i] = worldxy[1][i];
-        next_x_vals[i] = worldxy[0][i];
-        next_y_vals[i] = worldxy[1][i];
-      }
-
-    }
-
-    // planner.
-    vd_t lane1;
-    vd_t lane2;
-    vd_t lane3;
-    vvd_t lanes;
-    int ourlane = round(round(nextd-2)/4);
-    int bestlane = ourlane;
-    lanes.push_back(lane1);
-    lanes.push_back(lane2);
-    lanes.push_back(lane3);
-    bool badsensor = false;
-    int backvehicle_shift = 5;
-
-    // we are slow: need to see more of the back
-    //if (dist_inc < 0.35) {
-    //  backvehicle_shift = 10;
-    //}
-    // we are stuck: need to see more of the back
-    //if (stucktimer > 1000) {
-    //  backvehicle_shift = 15;
-    //}
-    for (int k = 0; k<sensor_fusion.size(); k++) {
-      vd_t vid = sensor_fusion[k];
-      double vidx = vid[1]+vid[3]*0.02;
-      double vidy = vid[2]+vid[4]*0.02;
-      vd_t vidlocal = getLocalXY(car_x, car_y, deg2rad(car_yaw_d), vidx, vidy);
-      double viddist = distance(car_x, car_y, vid[1], vid[2]);
-      double vids = vidlocal[0] + backvehicle_shift;
-      double vidd = vid[6];
-      sensor_fusion[k].push_back(vids);
-      sensor_fusion[k].push_back(distance(0,0,vid[3],vid[4])*0.02);
-      sensor_fusion[k].push_back(round(round(vidd-2)/4));
-      string lanestr = "error";
-      if (vids > 0.) {
-        if (vidd < 12. && vidd > 0.) {
-          if (vidd <= 3.7) {
-            lanestr = "0";
-            cout << "[" << vid[0] << ":(" << vid[5] << ":" << vid[6] << "):(" << vidlocal[0] << ":" << vidlocal[1] << "):" << vids << ":" << viddist << ":" << lanestr << "],";
-            lanes[0].push_back(vids);
-          }
-          if (vidd > 3.7 && vidd <= 4.3) {
-            lanestr = "0,1";
-            cout << "[" << vid[0] << ":(" << vid[5] << ":" << vid[6] << "):(" << vidlocal[0] << ":" << vidlocal[1] << "):" << vids << ":" << viddist << ":" << lanestr << "],";
-            lanes[0].push_back(vids);
-            lanes[1].push_back(vids);
-          }
-          if (vidd > 4.3 && vidd <= 7.7) {
-            lanestr = "1";
-            cout << "[" << vid[0] << ":(" << vid[5] << ":" << vid[6] << "):(" << vidlocal[0] << ":" << vidlocal[1] << "):" << vids << ":" << viddist << ":" << lanestr << "],";
-            lanes[1].push_back(vids);
-          }
-          if (vidd > 7.7 && vidd <= 8.3) {
-            lanestr = "1,2";
-            cout << "[" << vid[0] << ":(" << vid[5] << ":" << vid[6] << "):(" << vidlocal[0] << ":" << vidlocal[1] << "):" << vids << ":" << viddist << ":" << lanestr << "],";
-            lanes[1].push_back(vids);
-            lanes[2].push_back(vids);
-          }
-          if (vidd > 8.3) {
-            lanestr = "2";
-            cout << "[" << vid[0] << ":(" << vid[5] << ":" << vid[6] << "):(" << vidlocal[0] << ":" << vidlocal[1] << "):" << vids << ":" << viddist << ":" << lanestr << "],";
-            lanes[2].push_back(vids);
-          }
-        } else {
-          badsensor = true;
-          cout << "<" << vid[0] << ":(" << vid[5] << ":" << vid[6] << "):(" << vidlocal[0] << ":" << vidlocal[1] << "):" << vids << ":" << viddist << ":" << lanestr << ">,";
-        }
-      } else {
-        cout << "<<" << vid[0] << ":(" << vid[5] << ":" << vid[6] << "):(" << vidlocal[0] << ":" << vidlocal[1] << "):" << vids << ":" << viddist << ":" << lanestr << ">>,";
-      }
-    }
-    cout << endl;
-
-    // sort to find the nearest vehicle in each lane first
-    for (int lane = 0; lane<3; lane++) {
-      if (lanes[lane].size() > 0) {
-        sort(lanes[lane].begin(),lanes[lane].end());
-      }
-    }
-
-    // stuck! - create a virual car lower than the adjacent car in our lane.
-    if (stucktimer > 1000) {
-      int newlane = -1;
-      for (int lane=0; lane<lanes.size(); lane++) {
-        if (newlane < 0 && ourlane != lane && abs(ourlane-lane)==1) {
-          newlane = lane;
-          for (int i=0; i<sensor_fusion.size(); i++) {
-            vd_t vid = sensor_fusion[i];
-            if (vid[7] == lanes[newlane][0] && (lanes[newlane][0] > 15 || lanes[newlane][0] < 5)) {
-              lanes[ourlane][0] = lanes[newlane][0]-1;
-              vid[7] = lanes[ourlane][0];
-              vid[9] = double(ourlane);
-              sensor_fusion.push_back(vid);
-              cout << "create virual car from lane: " << newlane << " at: " << vid[7] << endl;
-            } else {
-              stucktimer = 0;
-              cout << "Too close to create virual car from lane: " << newlane << " at: " << vid[7] << endl;
-            }
-          }
-        }
-      }
-    }
-
-    // look at each lane
-    for (int lane = 0; lane<3; lane++) {
-      // if the lane has vehicles
-      if (lanes[lane].size() > 0) {
-        // if the current best lane has a nearer vehicle than this lane
-        if (lanes[bestlane].size() > 0 && (lanes[bestlane][0] < lanes[lane][0])) {
-          // only switch if ourlane has a vehicle less than 80 meters away and is the next lane over.
-          if (lanes[ourlane].size() > 0 && lanes[ourlane][0] < 80. && abs(ourlane-lane)==1) {
-            if (abs(ourlane-lane) == 1) {
-              // and it is more than 20 meters away.
-              if (lanes[lane][0] > 20) {
-                bestlane = lane;
-              } else {
-                if (lanes[lane][0] > 5 && stucktimer > 1000) {
-                  bestlane = lane;
-                }
-              }
-            //} else {
-            //  if (lanes[1].size() > 1 && lanes[1][0] > 40) {
-            //    // this better be worth it!
-            //    if (lanes[lane][0] > 80) {
-            //      bestlane = lane;
-            //    }
-            //    if (dist_inc < (inc_max*0.9)) {
-            //      dist_inc = vd[path_size-1];
-            //      // dist_inc = vd[0];
-            //      cout << "Changing lane: holding speed spacing to: " << dist_inc << endl;
-            //    } else {
-            //      dist_inc = inc_max*0.9;
-            //      cout << "Changing 2 lanes: decelerating speed spacing to: " << dist_inc << endl;
-            //    }
-            //  }
-            }
-            /*
-            if (dist_inc < inc_max) {
-              // dist_inc = vd[path_size-1];
-              dist_inc = vd[0];
-              cout << "Changing lane: holding speed spacing to: " << dist_inc << endl;
-            }
-            */
-          }
-        }
-      // if the lane is cleared of vehicles
-      } else {
-        // only switch if ourlane has a vehicle less than 80 meters away and is next lane over.
-        if (lanes[ourlane].size() > 0 && lanes[ourlane][0] < 80. && lanes[bestlane].size() > 0 && abs(ourlane-lane)==1) {
-          // only change if it is in the next lane
-          if (abs(ourlane-lane) == 1) {
-            bestlane = lane;
-
-          // if it is not the next lane, then make sure lane 1 is clear enough for us to get around
-          //} else {
-          //  if (lanes[1].size() > 1 && lanes[1][0] > 10) {
-          //    bestlane = lane;
-          //  }
-          }
-          if (dist_inc < inc_max) {
-            dist_inc = vd[path_size-1];
-          }
-        }
-      }
-    }
-    int lane0size = lanes[0].size();
-    int lane1size = lanes[1].size();
-    int lane2size = lanes[2].size();
-    float lane0closest = 0;
-    float lane1closest = 0;
-    float lane2closest = 0;
-    if (lane0size > 0) lane0closest = lanes[0][0];
-    if (lane1size > 0) lane1closest = lanes[1][0];
-    if (lane2size > 0) lane2closest = lanes[2][0];
-
-    cout << "lane0:" << lane0size << ":" << lane0closest << " lane1:" << lane1size << ":" << lane1closest << " lane2:" << lane2size << ":" << lane2closest << " ourlane:" << ourlane << " bestlane:" << bestlane << " inc=[" << dist_inc << ":" << smooth_speed(0) << "]" << endl;
-    if (timestep > 50 && ourlane != bestlane) {
-      if ( not lanechange and not badsensor ) {
-        cout << "ourlane:" << ourlane << " bestlane:" << bestlane << endl;
-        nextd = bestlane*4+2;
-        if (nextd > 7) {
-          nextd -= 0.3;
-        }
-        lanechange = true;
-        stucktimer = 0;
-      } else {
-        cout << "nextd: " << nextd << " change lane disabled! current position: " << vx[0] << "," << vy[0] << endl;
-      }
-    }
-
-    // no good way out - the other vehicle is too near - slow down
-    if (lanes[ourlane].size() > 0 && lanes[ourlane][0] < 40. && lanes[ourlane][0] > 5.) {
-      // no stuck timer if we are in the middle lane.
-      if (ourlane != 1) {
-        stucktimer++;
-      }
-      cout << "need to slowdown and match: " << lanes[ourlane][0] << " in lane: " << ourlane << endl;
-      for (int i=0; i<sensor_fusion.size(); i++) {
-        vd_t vid = sensor_fusion[i];
-        cout << i << " comparing: " << vid[7] <<":" << vid[9] << " with " << lanes[ourlane][0] << "(" << vid[3] << ":" << vid[4] << ":" << vid[8] << ")" << endl;
-        if (vid[7] == lanes[ourlane][0] && vid[9] == ourlane) {
-          // follow vehicle
-          if (vid[8] > 0.1) {
-            if (dist_inc >= vid[8]) {
-              // vehicle is slower than us... or closer than 20 meters away gradural decelerate to its speed
-              dist_inc = vid[8]*0.95;
-              cout << "decelerating: setting speed spacing to: " << dist_inc << endl;
-            } else {
-              if (vid[7] > 15) {
-                // vehicle is faster than us and is more than 15 meters away
-                // gradurally accelerate to its speed
-                dist_inc = dist_inc + (vid[8] - dist_inc)/2.;
-                cout << "accelerating: setting speed spacing to: " << dist_inc << endl;
-              }
-            }
-          // disabled vehicle
-          } else {
-            cout << "disabled vehicle!" << endl;
-            dist_inc = 0.1;
-            cout << "setting speed spacing to: " << dist_inc << endl;
-          }
-        }
-      }
-    } else {
-      // slowly increase speed to avoid max acceleration...
-      if (dist_inc < inc_max && not lanechange) {
-        double interval = inc_max - dist_inc;
-        if (interval > 0.15) {
-          dist_inc = dist_inc + interval/5.;
-          cout << "No vehicle: setting speed spacing to: " << dist_inc << endl;
-        } else {
-          if (interval > 0.1) {
-            dist_inc = dist_inc + interval/3.;
-          } else {
-            dist_inc = (dist_inc + inc_max)/2.;
-          }
-        }
-      }
-    }
-
-    vd_t localx(next_x_vals.size());
-    vd_t localy(next_x_vals.size());
-    for (int i=0; i < next_x_vals.size(); i++)
-    {
-      float next_x = (next_x_vals[i] - car_x);
-      float next_y = (next_y_vals[i] - car_y);
-      localx[i] = next_x*cos(yaw_r) + next_y*sin(yaw_r);
-      localy[i] = -next_x*sin(yaw_r) + next_y*cos(yaw_r);
-    }
-
-    // fit a polynomial
-    smooth_local.set_points(localx, localy);
-
-    // calculate the smoother path
-    double localxx = 0.;
-    double localxy = 0.;
-    for(int i = 0; i < num_points; i++)
-    {
-      localy[i] = smooth_local(localx[i]);
-      double dist = distance(localxx, localxy, localx[i], localy[i]);
-      if (dist > smooth_speed(double(i)))
-      {
-         double heading = atan2(localy[i]-localxy,localx[i]-localxx);
-         localx[i] = localxx + smooth_speed(double(i))*cos(heading);
-         localy[i] = smooth_local(localx[i]);
-         dist = distance(localxx, localxy, localx[i], localy[i]);
-      }
-      localxx = localx[i];
-      localxy = localy[i];
-    }
-
-    // convert back to global coordinates
-    for (int i=0; i<num_points; i++)
-    {
-      next_x_vals[i] = localx[i]*cos(yaw_r) - localy[i]*sin(yaw_r) + car_x;
-      next_y_vals[i] = localx[i]*sin(yaw_r) + localy[i]*cos(yaw_r) + car_y;
-    }
-
-    msgJson["next_x"] = next_x_vals;
-    msgJson["next_y"] = next_y_vals;
-
-    for (int i=path_size; i<num_points; i++)
-    {
-      if (i > 0)
-        xyd.push_back(distance(next_x_vals[i-1], next_y_vals[i-1], next_x_vals[i], next_y_vals[i]));
-      else
-        xyd.push_back(dist_inc);
-    }
-#endif
   	}
 
 
@@ -581,6 +134,9 @@ private:
 	/*! The previous path */
 	vvd_t vvPrevPath;
 
+	/*! The size of the previous path */
+	int nPrevPathSz;
+
 	/*! Sensor Fusion */
 	vvd_t vvSensorFusion;
 
@@ -589,6 +145,9 @@ private:
 
 	/*! Stores the path history */
 	vvd_t vvPathHistory;
+
+	/*! Tracks if we are in a lane change */
+	bool bLaneChange = false;
 
 	/*! Size of the waypoints */
 	int nWpSize;
@@ -698,6 +257,28 @@ private:
 	}
 
 	/*!
+     * Handles the generic cycle case
+     */
+	void HandleGenericCycle(spline hLaneSpline)
+	{
+		/* Get the localized previous path */
+		vvd_t vvPrevLocalPath = getLocalPoints(vvPrevPath[0], vvPrevPath[1]);
+        lx = previous_localxy[0];
+        ly = previous_localxy[1];
+
+        /* Erase the completed portion of the previous history */
+        vVelHistory.erase(vVelHistory.begin(), vVelHistory.begin() + (NUM_POINTS - nPrevPathSz));
+        vvPathHistory[0].erase(vvPathHistory[0].begin(), vvPathHistory[0].begin() + (NUM_POINTS - nPrevPathSz));
+        vvPathHistory[1].erase(vvPathHistory[1].begin(), vvPathHistory[1].begin() + (NUM_POINTS - nPrevPathSz));
+
+        /* Check if we are changing lanes */
+		if ((bLaneChange == true) && (abs(hLaneSpline(0.0)) < 0.01))
+		{
+            bLaneChange = false;
+        }
+	}
+
+	/*!
 	 * @brief: Computes the distance between 2 points on catesian co-ordinate system
 	 *
 	 * @param [in] x1, x2, y1, y2: The co-ordinates of the two points (x1, y1), (x2, y2)
@@ -746,10 +327,12 @@ private:
 
 		/* Compute the heading of the car relative to the closest waypoint */
 		const double dHeading = atan2((oMap.y[nWP] - oCar.y), (oMap.x[nWP] - oCar.x));
+		cout << dHeading << endl;
 
 		/* If the car is not heading towards the next waypoint (i.e: it's behind us), then choose
 		the next one instead */
-		const double dAngleDiff = abs(oCar.yaw_d - dHeading);
+		const double dAngleDiff = abs(oCar.yaw_r - dHeading);
+		cout << dAngleDiff << endl;
 		if(dAngleDiff > (M_PI / 4.0))
 		{
 			nWP++;
@@ -1013,6 +596,7 @@ int main()
         		/* If autonomous driving */
         		if (event == "telemetry") 
         		{
+        			const double yaw = j[1]["yaw"];
 		        	/* Get the car state */
 		        	PathPlanner::CAR_STATE oState = 
           			{
@@ -1020,8 +604,8 @@ int main()
             			j[1]["y"],
             			j[1]["s"],
             			j[1]["d"],
-            			j[1]["yaw_d"],
-            			deg2rad(j[1]["yaw_d"]),
+            			yaw,
+            			deg2rad(yaw),
             			j[1]["speed"]
           			};
 
