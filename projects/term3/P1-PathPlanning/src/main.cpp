@@ -35,6 +35,13 @@ using spline = tk::spline;
 typedef vector<double> vd_t;
 typedef vector<vector<double>> vvd_t;
 #define pb push_back
+#define REQUIRE(x) { \
+    if (!(x)) \
+    { \
+        cout << "ERROR AT " << __LINE__ << " IN FILE " << __FILE__ << endl; \
+        exit(1); \
+    } \
+}
 
 /* #################### PROTOTYPES #################### */
 static double deg2rad(const double x);
@@ -74,10 +81,10 @@ public:
     PathPlanner(const WP_MAP Map)
     {
         /* Save the waypoints */
-        oMap = Map;
+        goMap = Map;
 
         /* Save the size of the waypoints */
-        nWpSize = oMap.x.size();
+        gnMapSz = goMap.x.size();
     }
 
     /*!
@@ -99,19 +106,20 @@ public:
         vvd_t vvResult;
 
         /* Save the current values */
-        memcpy(&oCar, &State, sizeof(CAR_STATE));
-        vvPrevPath = PrevPath;
-        vvSenFus = SensorFusion;
+        memcpy(&goCar, &State, sizeof(CAR_STATE));
+        gvvPrPath = PrevPath;
+        gvvSenFus = SensorFusion;
 
         /* Save the previous path size */
-        nPrevPathSz = vvPrevPath[0].size();
+        gnPrPathSz = gvvPrPath[0].size();
+        REQUIRE(gnPrPathSz < NUM_POINTS)
 
         /* Setup a lane tracker */
         spline hLaneSpline;
         TrackLane(hLaneSpline);
 
         /* If this is the first cycle */
-        if (nPrevPathSz == 0)
+        if (gnPrPathSz == 0)
         {
             HandleFirstCycle(hLaneSpline, vvResult);
         }
@@ -126,37 +134,37 @@ public:
 
 private:
     /*! The waypoint map information */
-    WP_MAP oMap;
+    WP_MAP goMap;
 
     /*! The current state of the car */
-    CAR_STATE oCar;
+    CAR_STATE goCar;
 
     /*! The previous path */
-    vvd_t vvPrevPath;
+    vvd_t gvvPrPath;
 
     /*! The size of the previous path */
-    int nPrevPathSz;
+    int gnPrPathSz;
 
     /*! Sensor Fusion */
-    vvd_t vvSenFus;
+    vvd_t gvvSenFus;
 
     /*! Stores the velocity of the path */
-    vd_t vvVelHist;
+    vd_t gvvVelHist;
 
     /*! Stores the path history */
-    vvd_t vvPathHist;
+    vvd_t gvvPathHist;
 
     /*! Tracks if we are in a lane change */
-    bool bLaneChange = false;
+    bool gbLaneChange = false;
 
     /*! Size of the waypoints */
-    int nWpSize;
+    int gnMapSz;
 
     /*! The next d value */
-    double dNextD = 6.0;
+    double gnNextD = 6.0;
 
     /*! The value of distance increment per time step */
-    double dDistInc = MAX_DIST_INC;
+    double dnNextS = MAX_DIST_INC;
 
     /*!
     * Computes a lane tracking spline in local car co-ordinates
@@ -169,7 +177,7 @@ private:
         /* wrong way! */
         if (vvLocalWP[0][0] > 0.0) 
         {
-            oCar.yaw_d += 180.0;
+            goCar.yaw_d += 180.0;
             vvLocalWP = getLocalWPSeg();
         }
         
@@ -190,12 +198,12 @@ private:
         vTime.pb(double(NUM_POINTS * 1.0));
         vTime.pb(double(NUM_POINTS * 2.0));
 
-        vDist.pb(dDistInc * 0.01);
-        vDist.pb(dDistInc * 0.10);
-        vDist.pb(dDistInc * 0.15);
-        vDist.pb(dDistInc * 0.25);
-        vDist.pb(dDistInc * 0.35);
-        vDist.pb(dDistInc * 1.00);
+        vDist.pb(dnNextS * 0.01);
+        vDist.pb(dnNextS * 0.10);
+        vDist.pb(dnNextS * 0.15);
+        vDist.pb(dnNextS * 0.25);
+        vDist.pb(dnNextS * 0.35);
+        vDist.pb(dnNextS * 1.00);
 
         /* Form the spline */
         hVelocitySpline.set_points(vTime, vDist);
@@ -208,44 +216,42 @@ private:
     {
         vd_t vLocalX;
         vd_t vLocalY;
+        double dLocalX = 0.0;
+        double dLocalY = 0.0;
 
         /* Setup a velocity tracker */
         spline hVelocitySpline;
         TrackVelocityFirst(hVelocitySpline);
 
         /* Form a smooth localized lane using both velocity & lane splines */
-        double dNextX = 0.;
-        double dNextY;
         for (int i = 0; i < NUM_POINTS; i++)
         {
-            dNextX += hVelocitySpline(double(i));
-            dNextY = hLaneSpline(dNextX);
-            vLocalX.pb(dNextX);
-            vLocalY.pb(dNextY);
-            if (i > 0)
-            {
-                vvVelHist.pb(distance(vLocalX[i-1], vLocalY[i-1], vLocalX[i], vLocalY[i]));
-            }
-            else
-            {
-                vvVelHist.pb(hVelocitySpline(0.0));
-            }
+            dLocalX += hVelocitySpline(double(i));
+            vLocalX.pb(dLocalX);
+            vLocalY.pb(hLaneSpline(dLocalX));
         }
 
         /* Calculate the smoother path by smoothening the velocities further */
-        double dLocalX = 0.0;
-        double dLocalY = 0.0;
+        dLocalX = 0.0;
         for(int i = 0; i < NUM_POINTS; i++)
         {
-            /* Compute the distance */
+            /* Compute the distance & the intended speed */
             const double dDist = distance(dLocalX, dLocalY, vLocalX[i], vLocalY[i]);
             const double dSpeed = hVelocitySpline(double(i));
-            if ((dDist > dSpeed) || (dDist < (dSpeed * 0.8)))
+
+            /* If the actual distance is too different from the intended speed */
+            if ((dDist < (dSpeed * 0.8) || (dDist > dSpeed)))
             {
+                /* Smoothen the path using the heading */
                 const double dHeading = atan2((vLocalY[i] - dLocalY), (vLocalX[i] - dLocalX));
                 vLocalX[i] = dLocalX + hVelocitySpline(double(i)) * cos(dHeading);
                 vLocalY[i] = hLaneSpline(vLocalX[i]);
             }
+
+            /* Save the velocity */
+            gvvVelHist.pb(distance(dLocalX, dLocalY, vLocalX[i], vLocalY[i]));
+
+            /* Update the locals for the next round */    
             dLocalX = vLocalX[i];
             dLocalY = vLocalY[i];
         }
@@ -254,7 +260,7 @@ private:
         vvResult = getWorldPoints(vLocalX, vLocalY);
 
         /* Initialize the path history with these points */
-        vvPathHist = vvResult;
+        gvvPathHist = vvResult;
     }
 
     /*!
@@ -263,17 +269,19 @@ private:
     void HandleGenericCycle(spline &hLaneSpline, vvd_t &vvResult)
     {
         /* Get the localized previous path */
-        vvd_t vvLPath = getLocalPoints(vvPrevPath[0], vvPrevPath[1]);
+        vvd_t vvLPath = getLocalPoints(gvvPrPath[0], gvvPrPath[1]);
+        REQUIRE(vvLPath[0].size() == gnPrPathSz)
+        REQUIRE(vvLPath[1].size() == gnPrPathSz)
 
         /* Erase the completed portion of the previous history */
-        vvVelHist.erase(vvVelHist.begin(), vvVelHist.begin() + (NUM_POINTS - nPrevPathSz));
-        vvPathHist[0].erase(vvPathHist[0].begin(), vvPathHist[0].begin() + (NUM_POINTS - nPrevPathSz));
-        vvPathHist[1].erase(vvPathHist[1].begin(), vvPathHist[1].begin() + (NUM_POINTS - nPrevPathSz));
+        gvvVelHist.erase(gvvVelHist.begin(), gvvVelHist.begin() + (NUM_POINTS - gnPrPathSz));
+        gvvPathHist[0].erase(gvvPathHist[0].begin(), gvvPathHist[0].begin() + (NUM_POINTS - gnPrPathSz));
+        gvvPathHist[1].erase(gvvPathHist[1].begin(), gvvPathHist[1].begin() + (NUM_POINTS - gnPrPathSz));
 
         /* Check if we are changing lanes */
-        if ((bLaneChange == true) && (abs(hLaneSpline(0.0)) < 0.01))
+        if ((gbLaneChange == true) && (abs(hLaneSpline(0.0)) < 0.01))
         {
-            bLaneChange = false;
+            gbLaneChange = false;
         }
 
         /*** PATH ***/
@@ -284,7 +292,7 @@ private:
         /* Form a spline including the previous path */
         vd_t vLocalX;
         vd_t vLocalY;
-        for (int i = 0; i < nPrevPathSz; i++) 
+        for (int i = 0; i < gnPrPathSz; i++) 
         {
           vLocalX.pb(vvLPath[0][i]);
           vLocalY.pb(vvLPath[1][i]);
@@ -292,55 +300,48 @@ private:
 
         /* Add the next set of points based on the distance increments
         set previously */
-        double nextx = vvLPath[0][nPrevPathSz - 1] + 40;
-        for (int i = 0; i < nPrevPathSz; i++)
+        double nextx = vvLPath[0][gnPrPathSz - 1] + 40;
+        for (int i = 0; i < gnPrPathSz; i++)
         {
           vLocalX.pb(nextx);
           vLocalY.pb(hNewLane(nextx));
-          nextx += dDistInc;
+          nextx += dnNextS;
         }
 
         /* Reform the original lane spline */
         hLaneSpline.set_points(vLocalX, vLocalY);
 
-        /* Fill the result with the remaining points from previous path */
-        for(int i = 0; i < nPrevPathSz; i++) 
-        {
-            vvResult[0].pb(vvPrevPath[0][i]);
-            vvResult[1].pb(vvPrevPath[1][i]);
-        }
-
         /*** VELOCITY ***/
         /* Setup a velocity tracker */
-        spline hVelocitySpline;
         vd_t vTime;
         vd_t vDist;
-        vTime.pb(0.0);
-        vTime.pb(250.0);
-        if (vvVelHist[0] < MAX_DIST_INC) 
+
+        for (int i = 0; i < gnPrPathSz; i++)
         {
-          vDist.pb(vvVelHist[0]);
-        } 
-        else 
-        {
-          vDist.pb(vvVelHist[nPrevPathSz - 1]);
+            vTime.pb(double(i));
+            vDist.pb(gvvVelHist[i]);
         }
-        vDist.pb(dDistInc);
+        vTime.pb(double(NUM_POINTS * 5.0));
+        vDist.pb(dnNextS);
+
+        spline hVelocitySpline;
         hVelocitySpline.set_points(vTime, vDist);
 
-        /* Fill up */
-        for(int i = nPrevPathSz; i < NUM_POINTS; i++) 
+        /* Fill up the local path by interpolating from the previous path,
+        using the velocity & the path splines */
+        for(int i = gnPrPathSz; i < NUM_POINTS; i++) 
         {
             vvLPath[0].pb(vvLPath[0][i - 1] + hVelocitySpline(double(i)));
             vvLPath[1].pb(hLaneSpline(vvLPath[0][i]));
         }
+        REQUIRE(vvLPath[0].size() == NUM_POINTS)
+        REQUIRE(vvLPath[1].size() == NUM_POINTS)
 
         /* Form a smoother path */
         double dLocalX = vvLPath[0][0];
         double dLocalY = vvLPath[1][0];
         for(int i = 0; i < NUM_POINTS; i++)
         {
-            vvLPath[1][i] = hLaneSpline(vvLPath[0][i]);
             const double dist = distance(dLocalX, dLocalY, vvLPath[0][i], vvLPath[1][i]);
             if (dist > hVelocitySpline(double(i)))
             {
@@ -348,9 +349,9 @@ private:
                 vvLPath[0][i] = dLocalX + (hVelocitySpline(double(i)) * cos(dHeading));
                 vvLPath[1][i] = hLaneSpline(vvLPath[0][i]);
             }
-            if (i >= nPrevPathSz)
+            if (i >= gnPrPathSz)
             {
-                vvVelHist.push_back(dist);
+                gvvVelHist.push_back(distance(dLocalX, dLocalY, vvLPath[0][i], vvLPath[1][i]));
             }
             
             dLocalX = vvLPath[0][i];
@@ -358,7 +359,23 @@ private:
         }
 
         /* Convert these points to world points */
-        vvResult = getWorldPoints(vvLPath[0], vvLPath[1]);
+        vvd_t vvWorldPts = getWorldPoints(vvLPath[0], vvLPath[1]);
+        REQUIRE(vvWorldPts[0].size() == NUM_POINTS)
+        REQUIRE(vvWorldPts[1].size() == NUM_POINTS)
+
+        /* Make the final structure, start with the previous path */
+        vvResult = gvvPrPath;
+        for (int i = gnPrPathSz; i < vvWorldPts[0].size(); i++)    
+        {
+            vvResult[0].pb(vvWorldPts[0][i]);
+            vvResult[1].pb(vvWorldPts[1][i]);
+        }
+        REQUIRE(vvResult[0].size() == NUM_POINTS)
+        REQUIRE(vvResult[1].size() == NUM_POINTS)
+
+        /* Save the history */
+        gvvPathHist.clear();
+        gvvPathHist = vvResult;
     }
 
     /*!
@@ -386,9 +403,9 @@ private:
         int nWP = 0;
 
         /* Loop through all the waypoints and find the closest one */
-        for(int i = 0; i < nWpSize; i++) 
+        for(int i = 0; i < gnMapSz; i++) 
         {
-            const double dDist = distance(oCar.x, oCar.y, oMap.x[i], oMap.y[i]);
+            const double dDist = distance(goCar.x, goCar.y, goMap.x[i], goMap.y[i]);
             if(dDist < dLen) 
             {
                 dLen = dDist;
@@ -409,19 +426,19 @@ private:
         int nWP = ClosestWaypoint();
 
         /* Compute the heading of the car relative to the closest waypoint */
-        const double dHeading = atan2((oMap.y[nWP] - oCar.y), (oMap.x[nWP] - oCar.x));
+        const double dHeading = atan2((goMap.y[nWP] - goCar.y), (goMap.x[nWP] - goCar.x));
         cout << dHeading << endl;
 
         /* If the car is not heading towards the next waypoint (i.e: it's behind us), then choose
         the next one instead */
-        const double dAngleDiff = abs(oCar.yaw_r - dHeading);
+        const double dAngleDiff = abs(goCar.yaw_r - dHeading);
         cout << dAngleDiff << endl;
         if(dAngleDiff > (M_PI / 4.0))
         {
             nWP++;
 
             /* Loop around if required */
-            if (nWP >= nWpSize)
+            if (nWP >= gnMapSz)
             {
                 nWP = 0;
             }
@@ -442,7 +459,7 @@ private:
         int nPrevWP;
         if(nNextWP == 0) 
         {
-            nPrevWP  = nWpSize - 1;
+            nPrevWP  = gnMapSz - 1;
         }
         else
         {
@@ -450,10 +467,10 @@ private:
         }
 
         /* Compute the projection n */
-        const double dNX = oMap.x[nNextWP] - oMap.x[nPrevWP];
-        const double dNY = oMap.y[nNextWP] - oMap.y[nPrevWP];
-        const double dXX = oCar.x - oMap.x[nPrevWP];
-        const double dXY = oCar.y - oMap.y[nPrevWP];
+        const double dNX = goMap.x[nNextWP] - goMap.x[nPrevWP];
+        const double dNY = goMap.y[nNextWP] - goMap.y[nPrevWP];
+        const double dXX = goCar.x - goMap.x[nPrevWP];
+        const double dXY = goCar.y - goMap.y[nPrevWP];
 
         /* find the projection of x onto n */
         const double dProjNorm = (((dXX * dNX) + (dXY * dNY)) / ((dNX * dNX) + (dNY * dNY)));
@@ -464,8 +481,8 @@ private:
         double dFrenetD = distance(dXX, dXY, dProjX, dProjY);
 
         /* See if d value is positive or negative by comparing it to a center point */
-        const double dCenterX = 1000.0 - oMap.x[nPrevWP];
-        const double dCenterY = 2000.0 - oMap.y[nPrevWP];
+        const double dCenterX = 1000.0 - goMap.x[nPrevWP];
+        const double dCenterY = 2000.0 - goMap.y[nPrevWP];
         const double dCenterToPos = distance(dCenterX, dCenterY, dXX, dXY);
         const double dCenterToRef = distance(dCenterX, dCenterY, dProjX, dProjY);
 
@@ -479,7 +496,7 @@ private:
         double dFrenetS = 0.0;
         for(int i = 0; i < nPrevWP; i++) 
         {
-            dFrenetS += distance(oMap.x[i], oMap.y[i], oMap.x[i+1], oMap.y[i+1]);
+            dFrenetS += distance(goMap.x[i], goMap.y[i], goMap.x[i+1], goMap.y[i+1]);
         }
         dFrenetS += distance(0.0, 0.0, dProjX, dProjY);
 
@@ -500,11 +517,11 @@ private:
     {
         vd_t vResults;
 
-        const float dDeltaX = (dX - oCar.x);
-        const float dDeltaY = (dY - oCar.y);
+        const float dDeltaX = (dX - goCar.x);
+        const float dDeltaY = (dY - goCar.y);
 
-        vResults.push_back((dDeltaX  * cos(oCar.yaw_r)) + (dDeltaY * sin(oCar.yaw_r)));
-        vResults.push_back((-dDeltaX * sin(oCar.yaw_r)) + (dDeltaY * cos(oCar.yaw_r)));
+        vResults.push_back((dDeltaX  * cos(goCar.yaw_r)) + (dDeltaY * sin(goCar.yaw_r)));
+        vResults.push_back((-dDeltaX * sin(goCar.yaw_r)) + (dDeltaY * cos(goCar.yaw_r)));
 
         return vResults;
     }
@@ -520,8 +537,8 @@ private:
     {
         vd_t results;
 
-        results.push_back((dX * cos(oCar.yaw_r)) - (dY * sin(oCar.yaw_r)) + oCar.x);
-        results.push_back((dX * sin(oCar.yaw_r)) + (dY * cos(oCar.yaw_r)) + oCar.y);
+        results.push_back((dX * cos(goCar.yaw_r)) - (dY * sin(goCar.yaw_r)) + goCar.x);
+        results.push_back((dX * sin(goCar.yaw_r)) + (dY * cos(goCar.yaw_r)) + goCar.y);
 
         return results;
     }
@@ -544,14 +561,14 @@ private:
         int nPrevWP = nWp - WP_SPLINE_PREV;
         if (nPrevWP < 0) 
         {
-            nPrevWP += nWpSize;
+            nPrevWP += gnMapSz;
         }
 
         /* Convert the waypoints into localaized points */
         for (int i = 0; i < WP_SPLINE_TOT; i++) 
         {
-            const int nNextWP = (nPrevWP + i) % nWpSize;
-            const vd_t localxy = getLocalXY((oMap.x[nNextWP] + (dNextD * oMap.dx[nNextWP])), (oMap.y[nNextWP] + (dNextD * oMap.dy[nNextWP])));
+            const int nNextWP = (nPrevWP + i) % gnMapSz;
+            const vd_t localxy = getLocalXY((goMap.x[nNextWP] + (gnNextD * goMap.dx[nNextWP])), (goMap.y[nNextWP] + (gnNextD * goMap.dy[nNextWP])));
 
             vWpX.push_back(localxy[0]);
             vWpY.push_back(localxy[1]);
