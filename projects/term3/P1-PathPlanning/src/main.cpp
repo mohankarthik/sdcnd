@@ -22,18 +22,31 @@ using spline = tk::spline;
 
 /* #################### DEFINES #################### */
 /** INFRASTRUCTURE **/
-#define WP_FILE           ("../data/highway_map.csv") /*!< The path to the waypoint file */
-#define SIM_PORT          (4567)  /*!< The port, the simulator uses to connect */
+#define WP_FILE             ("../data/highway_map.csv") /*!< The path to the waypoint file */
+#define SIM_PORT            (4567)      /*!< The port, the simulator uses to connect */
+#define SF_NUM_ELEMENTS     (7)         /*!< Number of elements in each car's sensor fusion */
+#define SIM_TIME_SLICE      (0.02)      /*!< The time slice in the simulator */
+#define SIM_NUM_LANES       (3)         /*!< Number of lanes in the simulator */
+#define SIM_LANE_WD         (4)         /*!< The lane width in the simulator */
+#define FLOAT_INF           (numeric_limits<double>::infinity())
 
 /** ALGORITHM **/
-#define NUM_POINTS        (50)    /*!< Number of points predicted in each cycle */
-#define MAX_DIST_INC      (0.4425)/*!< The maximum dist inc per time step, corresponds to max velocity */
-#define WP_SPLINE_PREV    (6)     /*!< Number of waypoints to look behind when constructing a spline */
-#define WP_SPLINE_TOT     (25)    /*!< Total number of waypoints to look when constructing a spline */
+#define NUM_POINTS          (50)        /*!< Number of points predicted in each cycle */
+#define MAX_DIST_INC        (0.4425)    /*!< The maximum dist inc per time step, corresponds to max velocity */
+#define WP_SPLINE_PREV      (6)         /*!< Number of waypoints to look behind when constructing a spline */
+#define WP_SPLINE_TOT       (25)        /*!< Total number of waypoints to look when constructing a spline */
+#define LANE_BUFFER         (0.3)       /*!< The buffer between lanes, where cars are considered to be changing lanes */
+#define FLOAT_EPS           (0.1)      /*!< A small epsilon used in the algorithm */
+#define BEH_LANE_SCR        (0.75)
+#define BEH_DIST_SCR        (1.5)
+#define BEH_VEL_SCR         (2.0)
 
 /* #################### SIMPLIFICATIONS #################### */
+typedef vector<int> vi_t;
 typedef vector<double> vd_t;
+typedef vector<vector<int>> vvi_t;
 typedef vector<vector<double>> vvd_t;
+typedef vector<vector<vector<double>>> vvvd_t;
 #define pb push_back
 #define REQUIRE(x) { \
     if (!(x)) \
@@ -114,6 +127,12 @@ public:
         gnPrPathSz = gvvPrPath[0].size();
         REQUIRE(gnPrPathSz < NUM_POINTS)
 
+        /* Save the sensor fusion size */
+        gnSenFusSz = gvvSenFus.size();
+
+        /* Get the current lane */
+        gnCurLane = (int)(round(round(goCar.d - 2.0) / 4.0));
+
         /* Setup a lane tracker */
         spline hLaneSpline;
         TrackLane(hLaneSpline);
@@ -128,6 +147,15 @@ public:
             HandleGenericCycle(hLaneSpline, vvResult);
         }
 
+        /* Invoke the planner if there is no lane change in progress */
+        if (gbLaneChange == false)
+        {
+            BehaviourPlanner();    
+        }
+
+        /* Increment the timestep */
+        gnTimeStep++;
+
         return vvResult;
     }
 
@@ -139,6 +167,9 @@ private:
     /*! The current state of the car */
     CAR_STATE goCar;
 
+    /*! The current lane of the car */
+    int gnCurLane;
+
     /*! The previous path */
     vvd_t gvvPrPath;
 
@@ -147,6 +178,9 @@ private:
 
     /*! Sensor Fusion */
     vvd_t gvvSenFus;
+
+    /*! Size of the sensor fusion vector */
+    int gnSenFusSz;
 
     /*! Stores the velocity of the path */
     vd_t gvvVelHist;
@@ -164,7 +198,10 @@ private:
     double gnNextD = 6.0;
 
     /*! The value of distance increment per time step */
-    double dnNextS = MAX_DIST_INC;
+    double gnNextS = MAX_DIST_INC;
+
+    /*! The current time step */
+    long long gnTimeStep = 0;
 
     /*!
     * Computes a lane tracking spline in local car co-ordinates
@@ -198,12 +235,12 @@ private:
         vTime.pb(double(NUM_POINTS * 1.0));
         vTime.pb(double(NUM_POINTS * 2.0));
 
-        vDist.pb(dnNextS * 0.01);
-        vDist.pb(dnNextS * 0.10);
-        vDist.pb(dnNextS * 0.15);
-        vDist.pb(dnNextS * 0.25);
-        vDist.pb(dnNextS * 0.35);
-        vDist.pb(dnNextS * 1.00);
+        vDist.pb(gnNextS * 0.01);
+        vDist.pb(gnNextS * 0.10);
+        vDist.pb(gnNextS * 0.15);
+        vDist.pb(gnNextS * 0.25);
+        vDist.pb(gnNextS * 0.35);
+        vDist.pb(gnNextS * 1.00);
 
         /* Form the spline */
         hVelocitySpline.set_points(vTime, vDist);
@@ -278,8 +315,8 @@ private:
         gvvPathHist[0].erase(gvvPathHist[0].begin(), gvvPathHist[0].begin() + (NUM_POINTS - gnPrPathSz));
         gvvPathHist[1].erase(gvvPathHist[1].begin(), gvvPathHist[1].begin() + (NUM_POINTS - gnPrPathSz));
 
-        /* Check if we are changing lanes */
-        if ((gbLaneChange == true) && (abs(hLaneSpline(0.0)) < 0.01))
+        /* Check if we are done changing lanes */
+        if ((gbLaneChange == true) && (goCar.d >= (gnNextD - FLOAT_EPS)) && (goCar.d <= (gnNextD + FLOAT_EPS)))
         {
             gbLaneChange = false;
         }
@@ -305,7 +342,7 @@ private:
         {
           vLocalX.pb(nextx);
           vLocalY.pb(hNewLane(nextx));
-          nextx += dnNextS;
+          nextx += gnNextS;
         }
 
         /* Reform the original lane spline */
@@ -322,7 +359,7 @@ private:
             vDist.pb(gvvVelHist[i]);
         }
         vTime.pb(double(NUM_POINTS * 5.0));
-        vDist.pb(dnNextS);
+        vDist.pb(gnNextS);
 
         spline hVelocitySpline;
         hVelocitySpline.set_points(vTime, vDist);
@@ -376,6 +413,258 @@ private:
         /* Save the history */
         gvvPathHist.clear();
         gvvPathHist = vvResult;
+    }
+
+    /*!
+     * Behaviour planner
+     */
+    void BehaviourPlanner(void)
+    {
+        vvvd_t vvvLanes(SIM_NUM_LANES);
+
+        for (int i = 0; i < gnSenFusSz; i++) 
+        {
+            vd_t vVehicle = gvvSenFus[i];
+
+            /* Add the computed values into the sensor fusion structure */
+            /* Dist increments (velocity) of the car */
+            gvvSenFus[i].pb((distance(0.0, 0.0, vVehicle[3], vVehicle[4]) * SIM_TIME_SLICE));
+
+            /* Displacement of other car from ours */
+            gvvSenFus[i].pb(vVehicle[5] - goCar.s);
+
+            /* Add the cars into the corresponding lanes */
+            for (int j = 0; j < SIM_NUM_LANES; j++)
+            {
+                if ((vVehicle[6] >= ((j * SIM_LANE_WD) - LANE_BUFFER)) && (vVehicle[6] <= (((j + 1) * SIM_LANE_WD) + LANE_BUFFER)))
+                {
+                    vvvLanes[j].pb(gvvSenFus[i]);
+                }
+            }
+        }
+
+        /* Sort the lanes */
+        for (int i = 0; i < SIM_NUM_LANES; i++)
+        {
+            /* Sort based on the distance */
+            sort(vvvLanes[i].begin(), vvvLanes[i].end(),[](const std::vector<double>& a, const std::vector<double>& b) 
+            {
+                return a[8] < b[8];
+            });
+        }
+
+        /* Rank the lanes */
+        vi_t vLaneRanks;
+        vvi_t vvCloseCars;
+        RankLanes(vvvLanes, vvCloseCars, vLaneRanks);
+
+        /* Change lanes if feasible */
+        LaneChange(vvvLanes, vvCloseCars, vLaneRanks);
+    }
+
+    /*! Checks which of the lanes (including the current one)
+     * is most feasible in the order of their rankings, and if
+     * it's feasible, initiates the change
+     */
+    void LaneChange(const vvvd_t &vvvLanes, const vvi_t &vvCars, const vi_t &vRanks)
+    {
+        int nDestLane = gnCurLane;
+
+        for (int i = 0; i < SIM_NUM_LANES; i++)
+        {
+            /* Get the lane number */
+            int nLane = vRanks[i];
+
+            /* If the best lane is the current lane, then nothing to do, 
+            let's pack up and have a happy day... Yaaai */
+            if (nLane == gnCurLane)
+            {
+                /* Nothing to do */
+                break;
+            }
+
+            /* Find out how many lane shifts are we talking about to the
+            best lane */
+            int nChanges = nLane - gnCurLane;
+            int nDir = nChanges / abs(nChanges);
+
+            /* Check feasibility */
+            bool bFeasible = true;
+
+            /* If we are travelling too fast, then a multiple lane change might
+            cause too much jerk */
+            if ((gnNextS >= (MAX_DIST_INC * 0.7)) && (abs(nChanges) > 1))
+            {
+                bFeasible = false;
+            }
+
+            /* Check if in the series of intermediate & destination lanes,
+            if there are no cars immediately behind us */
+            for (int i = 1; i <= abs(nChanges); i++)
+            {
+                /* Can we change the lane */
+                const int nTempLane = gnCurLane + (i * nDir);
+                const int nCarIdxBk = vvCars[nTempLane][0];
+                const int nCarIdxFr = vvCars[nTempLane][1];
+                if (nCarIdxBk != -1)
+                {
+                    const double nDist = abs(vvvLanes[nTempLane][nCarIdxBk][8]);
+                    const double nVel = vvvLanes[nTempLane][nCarIdxBk][7];
+                    if (((nVel < gnNextS) && (nDist > 5.0)) ||
+                        ((nVel > gnNextS) && (nDist > 10.0)))
+                    {
+                        /* So this lane is fine to change, nothing to do */
+                    }
+                    else
+                    {
+                        bFeasible = false;
+                        break;
+                    } 
+                }
+                if (nCarIdxFr != -1)
+                {
+                    const double nDist = abs(vvvLanes[nTempLane][nCarIdxFr][8]);
+                    const double nVel = vvvLanes[nTempLane][nCarIdxFr][7];
+                    if (nDist > 10.0)
+                    {
+                        /* So this lane is fine to change, nothing to do */
+                    }
+                    else
+                    {
+                        bFeasible = false;
+                        break;
+                    } 
+                }
+            }
+
+            /* Check if all the lanes were fine */
+            if (bFeasible == true)
+            {
+                gbLaneChange = true;
+                nDestLane = nLane;
+                break;
+            }
+        }
+
+        /* Update the "d" */
+        gnNextD = (nDestLane * SIM_LANE_WD) + (SIM_LANE_WD * 0.5); 
+
+        /* Update the "s" */
+        const int nCarIdx = vvCars[nDestLane][1];
+        if (nCarIdx == -1)
+        {
+            /* Full speed ahead, since no car ahead of us */
+            gnNextS = MAX_DIST_INC;
+        }
+        else
+        {
+            const double nDist = vvvLanes[nDestLane][nCarIdx][8];
+            const double nVel = vvvLanes[nDestLane][nCarIdx][7];
+            if (nDist > 50.0)
+            {
+                gnNextS = MAX_DIST_INC;
+            }
+            else
+            {
+                gnNextS = nVel;
+            }
+        }
+    }
+
+    /*!
+     * Ranks the lanes based on the car ahead
+     */
+    void RankLanes(const vvvd_t &vvvLanes, vvi_t &vvCars, vi_t &vResult)
+    {
+        vector<pair<double,int>> vScores;
+
+        /* Find the cars closest to us in all the lanes */
+        FindClosestCars(vvvLanes, vvCars);
+
+        /* Compute the lane scores */
+        vResult.resize(SIM_NUM_LANES);
+        for (int i = 0; i < SIM_NUM_LANES; i++)
+        {
+            /* Lane change */
+            double nTemp = BEH_LANE_SCR * (1.0 - (fabs(i - gnCurLane) / (SIM_NUM_LANES - 1)));
+
+            /* Distance to ahead car */
+            if (vvCars[i][1] == -1)
+            {
+                nTemp += BEH_DIST_SCR;
+            }
+            else
+            {
+                nTemp += BEH_DIST_SCR * (1.0 - ((200.0 - vvvLanes[i][vvCars[i][1]][8]) / 200.0));
+            }
+
+            /* Velocity cost */
+            if (vvCars[i][1] == -1)
+            {
+                nTemp += BEH_VEL_SCR;
+            }
+            else
+            {
+                nTemp += BEH_VEL_SCR * (1.0 - ((MAX_DIST_INC - vvvLanes[i][vvCars[i][1]][7]) / MAX_DIST_INC));
+            }
+
+            /* Add it in */
+            vScores.pb(make_pair(nTemp, i));
+        }
+
+        /* Sort the scores */
+        sort(vScores.begin(), vScores.end());
+
+        /* Get the ranks */
+        for (int i = 0; i < SIM_NUM_LANES; i++)
+        {
+            vResult[i] = vScores[SIM_NUM_LANES - i - 1].second;
+        }
+
+        /* print */
+        system("clear");
+        for (int i = 0; i < SIM_NUM_LANES; i++)
+        {
+            cout << vScores[i].first << " " << vScores[i].second << endl;
+        }
+        cout << endl;
+    }
+
+    /*!
+     * Finds the closest car behind and ahead of our car in 
+     * each of the lanes
+     */
+    void FindClosestCars(const vvvd_t &vvvLanes, vvi_t &vvResult)
+    {
+        vvResult.resize(SIM_NUM_LANES);
+
+        for (int i = 0; i < SIM_NUM_LANES; i++)
+        {
+            vvResult[i].pb(-1);
+            vvResult[i].pb(-1);
+
+            /* Find the closest car behind */
+            for (int j = (vvvLanes[i].size() - 1); j >= 0; j--)
+            {
+                /* Find the maximum negative value */
+                if (vvvLanes[i][j][8] < 0)
+                {
+                    vvResult[i][0] = j;
+                    break;
+                }
+            }
+
+            /* Find the closest car ahead */
+            for (int j = 0; j < vvvLanes[i].size(); j++)
+            {
+                /* Find the minimum positive value */
+                if (vvvLanes[i][j][8] > 0)
+                {
+                    vvResult[i][1] = j;
+                    break;
+                }
+            }
+        }
     }
 
     /*!
