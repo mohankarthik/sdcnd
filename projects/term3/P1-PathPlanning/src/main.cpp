@@ -23,7 +23,6 @@ using spline = tk::spline;
 /* #################### DEFINES #################### */
 /** INFRASTRUCTURE **/
 #define WP_FILE             ("../data/highway_map.csv") /*!< The path to the waypoint file */
-#define LOG_FILE            "../data/logger.csv"
 #define SIM_PORT            (4567)      /*!< The port, the simulator uses to connect */
 #define SF_NUM_ELEMENTS     (7)         /*!< Number of elements in each car's sensor fusion */
 #define SIM_TIME_SLICE      (0.02)      /*!< The time slice in the simulator */
@@ -37,13 +36,13 @@ using spline = tk::spline;
 #define WP_SPLINE_PREV      (6)         /*!< Number of waypoints to look behind when constructing a spline */
 #define WP_SPLINE_TOT       (25)        /*!< Total number of waypoints to look when constructing a spline */
 #define LANE_BUFFER         (0.3)       /*!< The buffer between lanes, where cars are considered to be changing lanes */
-#define FLOAT_EPS           (0.1)      /*!< A small epsilon used in the algorithm */
-#define BEH_LANE_SCR        (0.75)
-#define BEH_DIST_SCR        (3.0)
-#define BEH_VEL_SCR         (3.0)
-#define MIN_VEH_GAP         (10.0)
-#define MAX_VEH_GAP         (200.0)
-#define MIN_LC_VOTES        (20)
+#define FLOAT_EPS           (0.1)       /*!< A small epsilon used in the algorithm */
+#define BEH_LANE_SCR        (0.75)      /*!< The lane scoring weight for the behaviour planner */
+#define BEH_DIST_SCR        (3.0)       /*!< The velocity scoring weight for the behaviour planner */
+#define BEH_VEL_SCR         (3.0)       /*!< The distance scoring weight for the behaviour planner */
+#define MIN_VEH_GAP         (10.0)      /*!< The minimum vehicle gap to be maintained at all costs */
+#define MAX_VEH_GAP         (200.0)     /*!< The maximum observable vehicle gap */
+#define MIN_LC_VOTES        (20)        /*!< The minimum number of votes needed to make a decision of lane change */
 
 /* #################### SIMPLIFICATIONS #################### */
 typedef vector<int> vi_t;
@@ -635,7 +634,6 @@ private:
                 nVS = BEH_VEL_SCR * (1.0 - (((MAX_DIST_INC * 2.0) - vvvLanes[i][vvCars[i][1]][7]) / (MAX_DIST_INC * 2.0)));
             }
             printf("%d:\t", i);
-            printf("%.2f \t", gnNextS);
             printf("%.2f \t", (nLCS + nDS + nVS));
             printf("%.2f \t", nLCS);
             if (vvCars[i][1] == -1)
