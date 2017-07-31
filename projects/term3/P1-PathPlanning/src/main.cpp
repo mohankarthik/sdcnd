@@ -23,6 +23,7 @@ using spline = tk::spline;
 /* #################### DEFINES #################### */
 /** INFRASTRUCTURE **/
 #define WP_FILE             ("../data/highway_map.csv") /*!< The path to the waypoint file */
+#define LOG_FILE            "../data/logger.csv"
 #define SIM_PORT            (4567)      /*!< The port, the simulator uses to connect */
 #define SF_NUM_ELEMENTS     (7)         /*!< Number of elements in each car's sensor fusion */
 #define SIM_TIME_SLICE      (0.02)      /*!< The time slice in the simulator */
@@ -31,15 +32,18 @@ using spline = tk::spline;
 #define FLOAT_INF           (numeric_limits<double>::infinity())
 
 /** ALGORITHM **/
-#define NUM_POINTS          (50)        /*!< Number of points predicted in each cycle */
+#define NUM_POINTS          (40)        /*!< Number of points predicted in each cycle */
 #define MAX_DIST_INC        (0.4425)    /*!< The maximum dist inc per time step, corresponds to max velocity */
 #define WP_SPLINE_PREV      (6)         /*!< Number of waypoints to look behind when constructing a spline */
 #define WP_SPLINE_TOT       (25)        /*!< Total number of waypoints to look when constructing a spline */
 #define LANE_BUFFER         (0.3)       /*!< The buffer between lanes, where cars are considered to be changing lanes */
 #define FLOAT_EPS           (0.1)      /*!< A small epsilon used in the algorithm */
 #define BEH_LANE_SCR        (0.75)
-#define BEH_DIST_SCR        (1.5)
-#define BEH_VEL_SCR         (2.0)
+#define BEH_DIST_SCR        (3.0)
+#define BEH_VEL_SCR         (3.0)
+#define MIN_VEH_GAP         (10.0)
+#define MAX_VEH_GAP         (200.0)
+#define MIN_LC_VOTES        (20)
 
 /* #################### SIMPLIFICATIONS #################### */
 typedef vector<int> vi_t;
@@ -203,6 +207,9 @@ private:
     /*! The current time step */
     long long gnTimeStep = 0;
 
+    /*! Votes for lane change */
+    int gnLaneChangeVotes = 0;
+
     /*!
     * Computes a lane tracking spline in local car co-ordinates
     */
@@ -239,8 +246,8 @@ private:
         vDist.pb(gnNextS * 0.10);
         vDist.pb(gnNextS * 0.15);
         vDist.pb(gnNextS * 0.25);
-        vDist.pb(gnNextS * 0.35);
-        vDist.pb(gnNextS * 1.00);
+        vDist.pb(gnNextS * 0.30);
+        vDist.pb(gnNextS * 0.50);
 
         /* Form the spline */
         hVelocitySpline.set_points(vTime, vDist);
@@ -293,6 +300,9 @@ private:
             dLocalY = vLocalY[i];
         }
 
+        /* Set the current velocity */
+        gnNextS = hVelocitySpline(NUM_POINTS);
+
         /* Convert these points to world points */
         vvResult = getWorldPoints(vLocalX, vLocalY);
 
@@ -318,6 +328,7 @@ private:
         /* Check if we are done changing lanes */
         if ((gbLaneChange == true) && (goCar.d >= (gnNextD - FLOAT_EPS)) && (goCar.d <= (gnNextD + FLOAT_EPS)))
         {
+            gnLaneChangeVotes = 0;
             gbLaneChange = false;
         }
 
@@ -479,6 +490,8 @@ private:
             let's pack up and have a happy day... Yaaai */
             if (nLane == gnCurLane)
             {
+                gnLaneChangeVotes = 0;
+
                 /* Nothing to do */
                 break;
             }
@@ -493,7 +506,7 @@ private:
 
             /* If we are travelling too fast, then a multiple lane change might
             cause too much jerk */
-            if ((gnNextS >= (MAX_DIST_INC * 0.7)) && (abs(nChanges) > 1))
+            if ((goCar.v >= 40.0) && (abs(nChanges) > 1))
             {
                 bFeasible = false;
             }
@@ -510,8 +523,8 @@ private:
                 {
                     const double nDist = abs(vvvLanes[nTempLane][nCarIdxBk][8]);
                     const double nVel = vvvLanes[nTempLane][nCarIdxBk][7];
-                    if (((nVel < gnNextS) && (nDist > 5.0)) ||
-                        ((nVel > gnNextS) && (nDist > 10.0)))
+                    if (((nVel < gnNextS) && (nDist > (MIN_VEH_GAP * 0.5))) ||
+                        ((nVel > gnNextS) && (nDist > (MIN_VEH_GAP * 3.0))))
                     {
                         /* So this lane is fine to change, nothing to do */
                     }
@@ -525,7 +538,7 @@ private:
                 {
                     const double nDist = abs(vvvLanes[nTempLane][nCarIdxFr][8]);
                     const double nVel = vvvLanes[nTempLane][nCarIdxFr][7];
-                    if (nDist > 10.0)
+                    if (nDist > (MIN_VEH_GAP * 2.0))
                     {
                         /* So this lane is fine to change, nothing to do */
                     }
@@ -540,8 +553,14 @@ private:
             /* Check if all the lanes were fine */
             if (bFeasible == true)
             {
-                gbLaneChange = true;
-                nDestLane = nLane;
+                gnLaneChangeVotes++;
+
+                if (gnLaneChangeVotes > MIN_LC_VOTES)
+                {
+                    gbLaneChange = true;
+                    nDestLane = nLane;
+                    gnLaneChangeVotes = 0;
+                }                
                 break;
             }
         }
@@ -560,13 +579,18 @@ private:
         {
             const double nDist = vvvLanes[nDestLane][nCarIdx][8];
             const double nVel = vvvLanes[nDestLane][nCarIdx][7];
-            if (nDist > 50.0)
+            if (nDist > (MIN_VEH_GAP * 4.0))
             {
-                gnNextS = MAX_DIST_INC;
+                gnNextS = MAX_DIST_INC; 
+            }
+            else if (nDist < (MIN_VEH_GAP * 1.0))
+            {
+                /* Emergency breaks */
+                gnNextS = 0;
             }
             else
             {
-                gnNextS = nVel;
+                gnNextS = ((gnNextS * 0.90) < nVel) ? nVel : (gnNextS * 0.90);
             }
         }
     }
@@ -583,33 +607,50 @@ private:
 
         /* Compute the lane scores */
         vResult.resize(SIM_NUM_LANES);
+        system("clear");
         for (int i = 0; i < SIM_NUM_LANES; i++)
         {
+            double nLCS, nDS, nVS;
+
             /* Lane change */
-            double nTemp = BEH_LANE_SCR * (1.0 - (fabs(i - gnCurLane) / (SIM_NUM_LANES - 1)));
+            nLCS = BEH_LANE_SCR * (1.0 - (fabs(i - gnCurLane) / (SIM_NUM_LANES - 1)));
 
             /* Distance to ahead car */
             if (vvCars[i][1] == -1)
             {
-                nTemp += BEH_DIST_SCR;
+                nDS = BEH_DIST_SCR;
             }
             else
             {
-                nTemp += BEH_DIST_SCR * (1.0 - ((200.0 - vvvLanes[i][vvCars[i][1]][8]) / 200.0));
+                nDS = BEH_DIST_SCR * (1.0 - ((MAX_VEH_GAP - vvvLanes[i][vvCars[i][1]][8]) / MAX_VEH_GAP));
             }
 
             /* Velocity cost */
             if (vvCars[i][1] == -1)
             {
-                nTemp += BEH_VEL_SCR;
+                nVS = BEH_VEL_SCR;
             }
             else
             {
-                nTemp += BEH_VEL_SCR * (1.0 - ((MAX_DIST_INC - vvvLanes[i][vvCars[i][1]][7]) / MAX_DIST_INC));
+                nVS = BEH_VEL_SCR * (1.0 - (((MAX_DIST_INC * 2.0) - vvvLanes[i][vvCars[i][1]][7]) / (MAX_DIST_INC * 2.0)));
+            }
+            printf("%d:\t", i);
+            printf("%.2f \t", gnNextS);
+            printf("%.2f \t", (nLCS + nDS + nVS));
+            printf("%.2f \t", nLCS);
+            if (vvCars[i][1] == -1)
+            {
+                printf("NA \t %.2f \t", nDS);
+                printf("NA \t %.2f \n", nVS);
+            }
+            else
+            {
+                printf("%.2f \t %.2f \t", vvvLanes[i][vvCars[i][1]][8], nDS);
+                printf("%.2f \t %.2f \n", vvvLanes[i][vvCars[i][1]][7], nVS);
             }
 
             /* Add it in */
-            vScores.pb(make_pair(nTemp, i));
+            vScores.pb(make_pair((nLCS + nDS + nVS), i));
         }
 
         /* Sort the scores */
@@ -620,14 +661,6 @@ private:
         {
             vResult[i] = vScores[SIM_NUM_LANES - i - 1].second;
         }
-
-        /* print */
-        system("clear");
-        for (int i = 0; i < SIM_NUM_LANES; i++)
-        {
-            cout << vScores[i].first << " " << vScores[i].second << endl;
-        }
-        cout << endl;
     }
 
     /*!
@@ -640,11 +673,12 @@ private:
 
         for (int i = 0; i < SIM_NUM_LANES; i++)
         {
+            const int sz = vvvLanes[i].size();
             vvResult[i].pb(-1);
             vvResult[i].pb(-1);
 
             /* Find the closest car behind */
-            for (int j = (vvvLanes[i].size() - 1); j >= 0; j--)
+            for (int j = (sz - 1); j >= 0; j--)
             {
                 /* Find the maximum negative value */
                 if (vvvLanes[i][j][8] < 0)
@@ -655,7 +689,7 @@ private:
             }
 
             /* Find the closest car ahead */
-            for (int j = 0; j < vvvLanes[i].size(); j++)
+            for (int j = 0; j < sz; j++)
             {
                 /* Find the minimum positive value */
                 if (vvvLanes[i][j][8] > 0)
@@ -716,12 +750,10 @@ private:
 
         /* Compute the heading of the car relative to the closest waypoint */
         const double dHeading = atan2((goMap.y[nWP] - goCar.y), (goMap.x[nWP] - goCar.x));
-        cout << dHeading << endl;
 
         /* If the car is not heading towards the next waypoint (i.e: it's behind us), then choose
         the next one instead */
         const double dAngleDiff = abs(goCar.yaw_r - dHeading);
-        cout << dAngleDiff << endl;
         if(dAngleDiff > (M_PI / 4.0))
         {
             nWP++;
@@ -962,11 +994,6 @@ int main()
 
     /* Initialize the path planner */
     PathPlanner planner = PathPlanner(WpMap);
-
-    /* set up logging */
-    string log_file = "../data/logger.csv";
-    ofstream out_log(log_file.c_str(), ofstream::out);
-    out_log << "t,x,y,vd,xyd,nd,d,st" << endl;
 
     h.onMessage([&planner](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) 
     {
