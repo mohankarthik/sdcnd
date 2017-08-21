@@ -1,2 +1,2 @@
-catkin_make
-source /devel/setup.bash
+catkin_make -j1
+source devel/setup.bash
