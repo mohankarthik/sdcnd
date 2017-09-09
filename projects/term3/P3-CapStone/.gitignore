@@ -1,4 +1,7 @@
-*.pyc
-*.idea
-ros/build
-ros/devel
+*.py[cod]
+
+.idea
+build
+devel
+
+profile.tmp

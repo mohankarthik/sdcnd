@@ -50,17 +50,20 @@ int main(int argc, char **argv)
   waypoint_follower::PurePursuit pp(linear_interpolate_mode);
 
   ROS_INFO("set publisher...");
+  /* Decrease the queue size of all publishers & subscribers from 10 to 1 for performance issues
+   * https://carnd.slack.com/archives/C6NVDVAQ3/p1504061507000179
+   */
   // publish topic
-  ros::Publisher cmd_velocity_publisher = nh.advertise<geometry_msgs::TwistStamped>("twist_cmd", 10);
+  ros::Publisher cmd_velocity_publisher = nh.advertise<geometry_msgs::TwistStamped>("twist_cmd", 1);
 
   ROS_INFO("set subscriber...");
   // subscribe topic
   ros::Subscriber waypoint_subscriber =
-      nh.subscribe("final_waypoints", 10, &waypoint_follower::PurePursuit::callbackFromWayPoints, &pp);
+      nh.subscribe("final_waypoints", 1, &waypoint_follower::PurePursuit::callbackFromWayPoints, &pp);
   ros::Subscriber ndt_subscriber =
-      nh.subscribe("current_pose", 10, &waypoint_follower::PurePursuit::callbackFromCurrentPose, &pp);
+      nh.subscribe("current_pose", 1, &waypoint_follower::PurePursuit::callbackFromCurrentPose, &pp);
   ros::Subscriber est_twist_subscriber =
-      nh.subscribe("current_velocity", 10, &waypoint_follower::PurePursuit::callbackFromCurrentVelocity, &pp);
+      nh.subscribe("current_velocity", 1, &waypoint_follower::PurePursuit::callbackFromCurrentVelocity, &pp);
 
   ROS_INFO("pure pursuit start");
   ros::Rate loop_rate(LOOP_RATE);
