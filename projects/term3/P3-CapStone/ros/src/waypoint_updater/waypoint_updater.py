@@ -35,13 +35,13 @@ class WaypointUpdater(object):
         rospy.init_node('waypoint_updater')
 
         # subscribe to all relevant topics
-        rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb, queue_size=1)
-        rospy.Subscriber('/current_velocity', TwistStamped, self.velocity_cb, queue_size=1)
-        rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb, queue_size=1)
+        self.sub_cur_pose = rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb, queue_size=1)
+        self.sub_cur_vel  = rospy.Subscriber('/current_velocity', TwistStamped, self.velocity_cb, queue_size=1)
+        self.sub_base_wp  = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb, queue_size=1)
         # TODO: Subscribe to /traffic_waypoint and /obstacle_waypoint
 
         # setup the publishers
-        self.final_waypoints = rospy.Publisher('final_waypoints', Lane, queue_size=1)
+        self.pub_final_waypoints = rospy.Publisher('final_waypoints', Lane, queue_size=1)
 
         # Log
         rospy.logdebug('Initialized Waypoint updater')
@@ -86,7 +86,7 @@ class WaypointUpdater(object):
             lane = self.__make_lane(msg.header.frame_id, lookahead_waypoints)
 
             # publish the subset of waypoints ahead
-            self.final_waypoints.publish(lane)
+            self.pub_final_waypoints.publish(lane)
 
     def waypoints_cb(self, msg):
         """
@@ -95,7 +95,12 @@ class WaypointUpdater(object):
         :param msg: A Lane object
         :return: None
         """
+        # Copy the waypoints
         self.base_wp = msg.waypoints
+
+        # Unsubscribe, since this is no longer requried
+        self.sub_base_wp.unregister()
+
 
     def velocity_cb(self, msg):
         """
